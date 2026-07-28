@@ -894,7 +894,7 @@
           </div>
           <div class="field">
             <label>Slug</label>
-            <input class="input" name="slug" pattern="[a-z0-9-]{3,50}" required>
+            <input class="input" name="slug" pattern="[a-z0-9\-]{3,50}" required>
           </div>
           <div class="button-row">
             <button class="btn">Create</button>
