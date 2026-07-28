@@ -1,0 +1,23 @@
+[Unit]
+Description=TeamAgents API Server
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/teamagents
+EnvironmentFile=/opt/teamagents/.env
+ExecStart=/opt/teamagents/bin/api
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=teamagents-api
+
+# 安全設定
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

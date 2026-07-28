@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: teamagents-db
+    environment:
+      POSTGRES_USER: teamagents
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: teamagents
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teamagents"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+      dockerfile: ../deploy/Dockerfile.api
+    container_name: teamagents-api
+    environment:
+      PORT: 8080
+      APP_ENV: development
+      APP_URL: http://localhost:3000
+      DATABASE_URL: postgres://teamagents:password@postgres:5432/teamagents?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production
+      DEV_OTP_CODE: "888888"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server:/app
+    restart: unless-stopped
+
+volumes:
+  pgdata:

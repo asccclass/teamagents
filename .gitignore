@@ -1,0 +1,6 @@
+.env
+envfile
+x.sql
+*.swp
+*.old
+*.exe

@@ -1,0 +1,23 @@
+[Unit]
+Description=TeamAgents Web (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/teamagents/apps/web
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=/opt/teamagents/apps/web/.env.local
+ExecStart=/usr/bin/node .next/standalone/server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=teamagents-web
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
