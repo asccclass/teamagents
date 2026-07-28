@@ -114,6 +114,11 @@
       return;
     }
 
+    if (state.route.name === "login" && state.token) {
+      navigate("/dashboard", true);
+      return;
+    }
+
     if (!state.token && state.route.name !== "login") {
       navigate("/login", true);
       return;
