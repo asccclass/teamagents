@@ -20,8 +20,9 @@ import (
 // ──────────────────────────────────────────
 
 type Claims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
+	UserID    interface{} `json:"userID"`
+	UserIDAlt string      `json:"user_id"`
+	Email     string      `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -58,6 +59,25 @@ func ParseToken(tokenStr string) (*Claims, error) {
 		return nil, fmt.Errorf("token 無效")
 	}
 	return claims, nil
+}
+
+// EnsureUserExists 依據 Email 在資料庫中確定/建立使用者並取得 UUID
+func EnsureUserExists(ctx context.Context, email string) (string, error) {
+	if email == "" {
+		return "", fmt.Errorf("email 為空")
+	}
+	var uid uuid.UUID
+	err := db.Pool.QueryRow(ctx,
+		`INSERT INTO users (email, name)
+		 VALUES ($1, $2)
+		 ON CONFLICT (email) DO UPDATE SET updated_at=NOW()
+		 RETURNING id`,
+		email, emailToName(email),
+	).Scan(&uid)
+	if err != nil {
+		return "", fmt.Errorf("同步使用者失敗: %w", err)
+	}
+	return uid.String(), nil
 }
 
 // ──────────────────────────────────────────

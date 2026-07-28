@@ -40,7 +40,13 @@ func Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), CtxUserID, claims.UserID)
+		userID, err := auth.EnsureUserExists(r.Context(), claims.Email)
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "使用者身份同步失敗: "+err.Error())
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), CtxUserID, userID)
 		ctx = context.WithValue(ctx, CtxEmail, claims.Email)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

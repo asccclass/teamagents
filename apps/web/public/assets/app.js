@@ -13,6 +13,17 @@
   }
   const config = { apiBase, wsUrl };
 
+  // 捕捉由 MemAuth (https://auth.justdrink.com.tw/) 帶回的 token
+  const urlParams = new URLSearchParams(location.search);
+  const urlToken = urlParams.get("token");
+  if (urlToken) {
+    localStorage.setItem("ta_token", urlToken);
+    urlParams.delete("token");
+    const cleanSearch = urlParams.toString();
+    const cleanUrl = location.pathname + (cleanSearch ? "?" + cleanSearch : "") + location.hash;
+    history.replaceState({}, "", cleanUrl);
+  }
+
   const app = document.getElementById("app");
   const state = {
     route: parseRoute(location.pathname),
@@ -122,12 +133,21 @@
     disconnectSocket();
   }
 
+  function redirectToMemAuth() {
+    const redirectTarget = location.origin + "/dashboard";
+    window.location.href = `https://auth.justdrink.com.tw/authlogin?redirectUrl=${encodeURIComponent(redirectTarget)}`;
+  }
+
   function onClick(event) {
     const target = event.target.closest("[data-action]");
     if (!target) return;
     event.preventDefault();
     const action = target.dataset.action;
 
+    if (action === "login-memauth") {
+      redirectToMemAuth();
+      return;
+    }
     if (action === "navigate") {
       navigate(target.dataset.href);
       return;
@@ -552,27 +572,10 @@
           <h1 class="title">TeamAgents</h1>
           <p class="subtitle">AI Agents as Teammates</p>
           ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
-          ${state.authStep === "email" ? `
-            <form class="form-grid" data-form="login-email">
-              <div class="field">
-                <label>Email</label>
-                <input class="input" data-model="login-email" name="email" type="email" value="${escapeAttr(state.loginEmail)}" placeholder="you@example.com" required>
-              </div>
-              <button class="btn" ${state.loading ? "disabled" : ""}>${state.loading ? "Sending..." : "Send OTP"}</button>
-            </form>
-          ` : `
-            <form class="form-grid" data-form="login-otp">
-              <input type="hidden" name="email" value="${escapeAttr(state.loginEmail)}">
-              <div class="field">
-                <label>OTP for ${escapeHtml(state.loginEmail)}</label>
-                <input class="input" data-model="login-otp" name="code" value="${escapeAttr(state.loginOtp)}" placeholder="000000" maxlength="6" required>
-              </div>
-              <div class="button-row">
-                <button class="btn" ${state.loading ? "disabled" : ""}>${state.loading ? "Verifying..." : "Verify OTP"}</button>
-                <button class="btn btn-secondary" type="button" data-action="back-to-email">Change email</button>
-              </div>
-            </form>
-          `}
+          <div class="form-grid" style="margin-top:24px;">
+            <button class="btn" type="button" data-action="login-memauth">使用 MemAuth 帳號登入</button>
+            <p class="muted mini" style="text-align:center;margin-top:8px;">單點登入系統：auth.justdrink.com.tw</p>
+          </div>
           ${renderModal()}
         </section>
       </div>

@@ -35,6 +35,12 @@ func HandleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, err := auth.EnsureUserExists(r.Context(), claims.Email)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "使用者身份同步失敗: "+err.Error())
+		return
+	}
+
 	workspaceSlug := r.URL.Query().Get("workspace")
 	isDaemon := r.URL.Query().Get("daemon") == "1"
 	runtimeID := r.URL.Query().Get("runtime_id")
@@ -45,7 +51,7 @@ func HandleConnect(w http.ResponseWriter, r *http.Request) {
 		`SELECT w.id FROM workspaces w
 		 JOIN workspace_members wm ON wm.workspace_id = w.id
 		 WHERE w.slug = $1 AND wm.user_id = $2`,
-		workspaceSlug, claims.UserID,
+		workspaceSlug, userID,
 	).Scan(&workspaceID)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "無工作區存取權限")
@@ -62,7 +68,7 @@ func HandleConnect(w http.ResponseWriter, r *http.Request) {
 		hub:         DefaultHub,
 		conn:        conn,
 		send:        make(chan []byte, 256),
-		userID:      claims.UserID,
+		userID:      userID,
 		workspaceID: workspaceID,
 		runtimeID:   runtimeID,
 		isDaemon:    isDaemon,
