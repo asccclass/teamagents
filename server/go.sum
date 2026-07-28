@@ -1,3 +1,5 @@
+github.com/asccclass/sherryserver v1.1.0 h1:fPkxyxNVoIB28K2CiROskOyOagUEtaTllTVGM8VHeEI=
+github.com/asccclass/sherryserver v1.1.0/go.mod h1:VfulN40qq/mjgqNjq6b34f6+0w69qKQ/h1nTwRQMjjk=
 github.com/asccclass/sherrytime v0.0.3 h1:iWWW4Pn6qimtTvLcCx80w5ZN7OKm4dzFsB2kxu9Uc24=
 github.com/asccclass/sherrytime v0.0.3/go.mod h1:fNLGE6SWzubsMOvE9/gZkUYxY/pHY1J0r8sniC0ZJaw=
 github.com/coder/websocket v1.8.13 h1:f3QZdXy7uGVz+4uCJy2nTZyM0yTBj8yANEHhqlXZ9FE=
