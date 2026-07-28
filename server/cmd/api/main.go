@@ -4,15 +4,12 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	sherryserver "github.com/asccclass/sherryserver"
 	"github.com/teamagents/server/internal/agent"
 	"github.com/teamagents/server/internal/auth"
 	"github.com/teamagents/server/internal/autopilot"
@@ -140,32 +137,11 @@ func main() {
 	})
 
 	// ── 啟動 Server ──────────────────────────────
-	srv := &http.Server{
-		Addr:         ":" + config.C.Port,
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+	sryServer, err := sherryserver.NewServer(":"+config.C.Port, "", "")
+	if err != nil {
+		log.Fatalf("SherryServer 初始化失敗: %v", err)
 	}
-
-	// Graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		log.Printf("✅ Server 運行於 http://0.0.0.0:%s", config.C.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server 啟動失敗: %v", err)
-		}
-	}()
-
-	<-quit
-	log.Println("🛑 Server 正在關閉...")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Server 關閉錯誤: %v", err)
-	}
-	log.Println("✅ Server 已停止")
+	sryServer.Server.Handler = r
+	log.Printf("✅ TeamAgents API Server (SherryServer) 運行於 http://0.0.0.0:%s", config.C.Port)
+	sryServer.Start()
 }

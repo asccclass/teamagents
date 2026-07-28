@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	staticfileserver "github.com/asccclass/staticfileserver"
+	sherryserver "github.com/asccclass/sherryserver"
 )
 
 type webConfig struct {
@@ -44,25 +44,20 @@ func main() {
 		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 		_, _ = fmt.Fprintf(w, "window.__TEAMAGENTS_CONFIG__ = %s;\n", body)
 	})
-	mux.Handle("/", staticfileserver.StaticFileServer{
+	mux.Handle("/", sherryserver.StaticFileServer{
 		StaticPath: root,
 		IndexPath:  "index.html",
 	})
 
-	server := &http.Server{
-		Addr:              ":" + port,
-		Handler:           requestLogger(mux),
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
+	sryServer, err := sherryserver.NewServer(":"+port, "", "")
+	if err != nil {
+		log.Fatalf("SherryServer initialization failed: %v", err)
 	}
+	sryServer.Server.Handler = requestLogger(mux)
 
-	log.Printf("teamagents web listening on http://0.0.0.0:%s", port)
+	log.Printf("teamagents web (SherryServer) listening on http://0.0.0.0:%s", port)
 	log.Printf("serving %s", root)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("web server failed: %v", err)
-	}
+	sryServer.Start()
 }
 
 func getenv(key, fallback string) string {
