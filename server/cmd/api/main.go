@@ -177,6 +177,9 @@ func main() {
 	}
 
 	// ── 啟動 Server ──────────────────────────────
+	if _, err := os.Stat("envfile"); os.IsNotExist(err) {
+		_ = os.WriteFile("envfile", []byte("SystemName=TeamAgents-API\n"), 0644)
+	}
 	sryServer, err := sherryserver.NewServer(":"+config.C.Port, "", "")
 	if err != nil {
 		log.Fatalf("SherryServer 初始化失敗: %v", err)
