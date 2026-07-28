@@ -36,7 +36,7 @@ func Authenticate(next http.Handler) http.Handler {
 
 		claims, err := auth.ParseToken(parts[1])
 		if err != nil {
-			respond.Error(w, http.StatusUnauthorized, "token 無效或已過期")
+			respond.Error(w, http.StatusUnauthorized, "token 無效或已過期: "+err.Error())
 			return
 		}
 

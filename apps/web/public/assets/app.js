@@ -135,7 +135,7 @@
 
   function redirectToMemAuth() {
     const redirectTarget = location.origin + "/dashboard";
-    window.location.href = `https://auth.justdrink.com.tw/authlogin?redirectUrl=${encodeURIComponent(redirectTarget)}`;
+    window.location.href = `https://auth.justdrink.com.tw/authlogin?redirectURL=${encodeURIComponent(redirectTarget)}&redirect_uri=${encodeURIComponent(redirectTarget)}`;
   }
 
   function onClick(event) {
@@ -524,10 +524,12 @@
   }
 
   function handleAuthFailure(error) {
-    console.error(error);
-    if (String(error.message || "").toLowerCase().includes("token")) {
+    console.error("Auth Failure:", error);
+    const msg = String(error.message || "");
+    if (msg.toLowerCase().includes("token") || msg.toLowerCase().includes("unauthorized") || msg.toLowerCase().includes("無效") || msg.toLowerCase().includes("過期")) {
       localStorage.removeItem("ta_token");
       state.token = "";
+      state.error = `認證失敗: ${msg}`;
       navigate("/login", true);
     }
   }

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/teamagents/server/internal/config"
 )
 
 // ──────────────────────────────────────────
