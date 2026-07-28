@@ -1,15 +1,14 @@
 [Unit]
-Description=TeamAgents Web (Next.js)
+Description=TeamAgents Web (Go)
 After=network.target
 
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/opt/teamagents/apps/web
-Environment=NODE_ENV=production
+WorkingDirectory=/opt/teamagents
 Environment=PORT=3000
-EnvironmentFile=/opt/teamagents/apps/web/.env.local
-ExecStart=/usr/bin/node .next/standalone/server.js
+EnvironmentFile=/opt/teamagents/apps/web/.env.web
+ExecStart=/opt/teamagents/bin/web
 Restart=always
 RestartSec=5
 StandardOutput=journal
