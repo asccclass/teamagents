@@ -16,6 +16,7 @@ WORKDIR /app
 
 COPY --from=builder /api .
 COPY migrations/ ./migrations/
+COPY apps/web/public/ ./apps/web/public/
 
 ENV TZ=Asia/Taipei
 EXPOSE 8080

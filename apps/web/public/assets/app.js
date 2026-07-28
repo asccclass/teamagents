@@ -1,7 +1,9 @@
 (function () {
-  const config = window.__TEAMAGENTS_CONFIG__ || {
-    apiBase: "http://localhost:8080",
-    wsUrl: "ws://localhost:8080/ws",
+  const defaultWsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const rawConfig = window.__TEAMAGENTS_CONFIG__ || {};
+  const config = {
+    apiBase: rawConfig.apiBase || "",
+    wsUrl: rawConfig.wsUrl || `${defaultWsProtocol}//${location.host}/ws`,
   };
 
   const app = document.getElementById("app");

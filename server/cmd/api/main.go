@@ -2,8 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -135,6 +140,41 @@ func main() {
 			})
 		})
 	})
+
+	// ── 前端動態設定 ──────────────────────────────
+	r.Get("/config.js", func(w http.ResponseWriter, r *http.Request) {
+		apiBase := os.Getenv("API_BASE")
+		wsURL := os.Getenv("WS_URL")
+		body, err := json.Marshal(map[string]string{
+			"apiBase": apiBase,
+			"wsUrl":   wsURL,
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+		_, _ = fmt.Fprintf(w, "window.__TEAMAGENTS_CONFIG__ = %s;\n", body)
+	})
+
+	// ── 靜態網頁伺服器 (SPA Fallback) ─────────────
+	staticRoot := os.Getenv("WEB_STATIC_ROOT")
+	if staticRoot == "" {
+		staticRoot = filepath.Join("apps", "web", "public")
+	}
+	root, err := filepath.Abs(staticRoot)
+	if err == nil {
+		if _, statErr := os.Stat(root); statErr == nil {
+			log.Printf("📦 載入靜態網頁資產: %s", root)
+			staticServer := sherryserver.StaticFileServer{
+				StaticPath: root,
+				IndexPath:  "index.html",
+			}
+			r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+				staticServer.ServeHTTP(w, req)
+			})
+		}
+	}
 
 	// ── 啟動 Server ──────────────────────────────
 	sryServer, err := sherryserver.NewServer(":"+config.C.Port, "", "")

@@ -1,4 +1,4 @@
-.PHONY: dev db-up db-down run-api run-web up down build-api build-daemon build-web db-shell db-reset test test-health test-otp gen-secret clean
+.PHONY: dev db-up db-down run-api up down build-api build-daemon db-shell db-reset test test-health test-otp gen-secret clean
 
 PORT ?= 11053
 
@@ -18,12 +18,6 @@ run-api:
 	export $$(grep -v '^#' ../.env | xargs) && \
 	MIGRATIONS_DIR=migrations go run ./cmd/api
 
-run-web:
-	go run ./apps/web/cmd/web
-
-web-dev:
-	API_BASE=http://localhost:8080 WS_URL=ws://localhost:8080/ws go run ./apps/web/cmd/web
-
 up:
 	docker compose up -d --build
 
@@ -35,9 +29,6 @@ build-api:
 
 build-daemon:
 	cd server && CGO_ENABLED=0 go build -o ../bin/daemon ./cmd/daemon
-
-build-web:
-	CGO_ENABLED=0 go build -o ./bin/web ./apps/web/cmd/web
 
 db-shell:
 	docker exec -it teamagents-db psql -U teamagents -d teamagents

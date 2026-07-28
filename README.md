@@ -6,14 +6,12 @@ TeamAgents is a Go-based system for coordinating AI agents as teammates.
 
 ```text
 teamagents/
-├── server/                  # Go API server and daemon
-│   ├── cmd/api              # API entrypoint
+├── server/                  # Go API server (integrated web frontend) and daemon
+│   ├── cmd/api              # Integrated API & Web entrypoint
 │   ├── cmd/daemon           # daemon entrypoint
 │   ├── internal/            # handlers, auth, workspace, websocket, skills, autopilots
 │   └── migrations/          # PostgreSQL schema
-├── apps/web/                # Go web frontend + static SPA assets
-│   ├── cmd/web              # frontend server entrypoint
-│   └── public/              # HTML, CSS, JS
+├── apps/web/public/         # HTML, CSS, JS static SPA assets
 ├── deploy/                  # nginx and systemd units
 └── docker-compose.yml
 ```
@@ -27,23 +25,16 @@ teamagents/
 make db-up
 ```
 
-3. Start the API server:
+3. Start the Server (API & Web):
 
 ```bash
 make run-api
 ```
 
-4. Start the Go web frontend:
+4. Start the daemon when needed:
 
 ```bash
-cp apps/web/.env.local.example apps/web/.env.web
-make web-dev
-```
-
-5. Start the daemon when needed:
-
-```bash
-go run ./server/cmd/daemon
+cd server && go run ./cmd/daemon
 ```
 
 ## Build Targets
@@ -51,7 +42,6 @@ go run ./server/cmd/daemon
 ```bash
 make build-api
 make build-daemon
-make build-web
 ```
 
 ## Docker Compose
@@ -63,11 +53,11 @@ docker compose up -d --build
 This starts:
 
 - PostgreSQL on `localhost:5432`
-- API on `http://localhost:8080`
-- Web frontend on `http://localhost:3000`
+- Integrated Server (Web + API + WS) on `http://localhost:8080`
 
 ## Routing
 
-- `/` is served by the Go frontend on port `3000`
+- `/` and static assets are served by the integrated Server on port `8080`
 - `/api/*` is served by the Go API on port `8080`
 - `/ws` is served by the Go API websocket handler on port `8080`
+
