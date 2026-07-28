@@ -158,22 +158,32 @@ func main() {
 	})
 
 	// ── 靜態網頁伺服器 (SPA Fallback) ─────────────
-	staticRoot := os.Getenv("WEB_STATIC_ROOT")
-	if staticRoot == "" {
-		staticRoot = filepath.Join("apps", "web", "public")
+	var validStaticRoot string
+	candidates := []string{
+		os.Getenv("WEB_STATIC_ROOT"),
+		filepath.Join("apps", "web", "public"),
+		filepath.Join("..", "apps", "web", "public"),
+		"./public",
 	}
-	root, err := filepath.Abs(staticRoot)
-	if err == nil {
-		if _, statErr := os.Stat(root); statErr == nil {
-			log.Printf("📦 載入靜態網頁資產: %s", root)
-			staticServer := sherryserver.StaticFileServer{
-				StaticPath: root,
-				IndexPath:  "index.html",
-			}
-			r.NotFound(func(w http.ResponseWriter, req *http.Request) {
-				staticServer.ServeHTTP(w, req)
-			})
+
+	for _, cand := range candidates {
+		if cand == "" {
+			continue
 		}
+		absPath, err := filepath.Abs(cand)
+		if err == nil {
+			if stat, statErr := os.Stat(absPath); statErr == nil && stat.IsDir() {
+				validStaticRoot = absPath
+				break
+			}
+		}
+	}
+
+	if validStaticRoot != "" {
+		log.Printf("📦 載入靜態網頁資產: %s", validStaticRoot)
+		r.NotFound(serveSPA(validStaticRoot, "index.html"))
+	} else {
+		log.Printf("⚠️ 未找到靜態網頁資產目錄")
 	}
 
 	// ── 啟動 Server ──────────────────────────────
@@ -187,4 +197,22 @@ func main() {
 	sryServer.Server.Handler = r
 	log.Printf("✅ TeamAgents API Server (SherryServer) 運行於 http://0.0.0.0:%s", config.C.Port)
 	sryServer.Start()
+}
+
+func serveSPA(staticPath, indexPath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := filepath.Clean(r.URL.Path)
+		fullPath := filepath.Join(staticPath, path)
+
+		stat, err := os.Stat(fullPath)
+		if os.IsNotExist(err) || stat.IsDir() {
+			http.ServeFile(w, r, filepath.Join(staticPath, indexPath))
+			return
+		} else if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		http.ServeFile(w, r, fullPath)
+	}
 }
