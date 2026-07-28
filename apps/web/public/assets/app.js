@@ -1,10 +1,17 @@
 (function () {
   const defaultWsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   const rawConfig = window.__TEAMAGENTS_CONFIG__ || {};
-  const config = {
-    apiBase: rawConfig.apiBase || "",
-    wsUrl: rawConfig.wsUrl || `${defaultWsProtocol}//${location.host}/ws`,
-  };
+  let apiBase = rawConfig.apiBase || "";
+  if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    if (apiBase.includes("localhost") || apiBase.includes("127.0.0.1")) {
+      apiBase = "";
+    }
+  }
+  let wsUrl = rawConfig.wsUrl;
+  if (!wsUrl || ((location.hostname !== "localhost" && location.hostname !== "127.0.0.1") && (wsUrl.includes("localhost") || wsUrl.includes("127.0.0.1")))) {
+    wsUrl = `${defaultWsProtocol}//${location.host}/ws`;
+  }
+  const config = { apiBase, wsUrl };
 
   const app = document.getElementById("app");
   const state = {

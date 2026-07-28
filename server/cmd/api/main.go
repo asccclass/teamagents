@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 
 	"github.com/go-chi/chi/v5"
@@ -139,9 +140,14 @@ func main() {
 	})
 
 	// ── 前端動態設定 ──────────────────────────────
-	r.Get("/config.js", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/config.js", func(w http.ResponseWriter, req *http.Request) {
 		apiBase := os.Getenv("API_BASE")
 		wsURL := os.Getenv("WS_URL")
+		if !strings.HasPrefix(req.Host, "localhost") && !strings.HasPrefix(req.Host, "127.0.0.1") {
+			if strings.Contains(apiBase, "localhost") || strings.Contains(apiBase, "127.0.0.1") {
+				apiBase = ""
+			}
+		}
 		body, err := json.Marshal(map[string]string{
 			"apiBase": apiBase,
 			"wsUrl":   wsURL,
