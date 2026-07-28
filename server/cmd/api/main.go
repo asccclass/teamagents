@@ -204,6 +204,7 @@ func main() {
 
 func serveSPA(staticPath, indexPath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		path := filepath.Clean(r.URL.Path)
 		fullPath := filepath.Join(staticPath, path)
 
