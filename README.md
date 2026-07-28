@@ -4,7 +4,9 @@ TeamAgents 是一個基於 Go 語言構建的高效能 AI Agent 協作平台，�
 
 ---
 
-## 🏗️ 專案架構 (Project Architecture)
+## 🏗️ 系統架構 (System Architecture)
+
+![Agent Platform 系統架構](./agent_platform_architecture.svg)
 
 系統採用單一整合式後端架構（Single Integrated Server），將前端單頁應用程式（SPA）、RESTful API 與 WebSocket 即時通訊整合於同一 Go 服務中：
 
@@ -18,8 +20,46 @@ teamagents/
 ├── apps/web/public/         # 前端 SPA 靜態網頁資產 (HTML, CSS, JS)
 ├── deploy/                  # Nginx 與 Systemd 部署設定
 ├── docker-compose.yml       # Docker Compose 一鍵啟動配置
+├── agent_platform_architecture.svg # 系統分層架構圖
 └── makefile                 # 自動化建置指令集
 ```
+
+---
+
+## 🤖 TeamAgents Daemon 使用說明
+
+Daemon 是運行在開發者本機（或 Worker 伺服器）上的背景執行器，負責接收網頁派發的任務並使用本機的 AI CLI（`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `kimi`, `gh` 等）執行程式碼。
+
+### 1. 取得 `.env` 設定檔
+在 Web 介面開啟 **Workspace -> Settings** 點擊 `Copy Daemon Env`（或手動建立 `.env`）：
+
+```env
+# TeamAgents Daemon .env
+DAEMON_TOKEN=eyJhbGci...      # 從 Web 介面取得的 JWT Token
+WORKSPACE_SLUG=your-workspace  # 工作區 Slug (例如 my-team)
+API_BASE=https://teamagents.justdrink.com.tw
+WS_URL=wss://teamagents.justdrink.com.tw/ws
+AGENT_WORKDIR=/path/to/your/project # 本機要讓 AI 操作的專案目錄
+```
+
+### 2. 編譯與執行 Daemon
+
+```bash
+# 編譯 Daemon 執行檔
+cd server
+go build -o daemon ./cmd/daemon
+
+# 執行 Daemon (自動載入同目錄下的 .env)
+./daemon
+
+# 或以環境變數直接啟動：
+DAEMON_TOKEN="<TOKEN>" WORKSPACE_SLUG="my-team" API_BASE="https://teamagents.justdrink.com.tw" WS_URL="wss://teamagents.justdrink.com.tw/ws" AGENT_WORKDIR="/Users/name/projects/my-app" ./daemon
+```
+
+### 3. 運作機制
+1. **自動 CLI 偵測**：Daemon 啟動時會自動搜尋本機 PATH 中已安裝的 CLI 工具（`claude`, `codex`, `gemini`, `cursor-agent` 等）。
+2. **Runtime 登記**：自動向 Server 註冊目前主機為 Runtime 節點，可在 Web 介面 **Workspace -> Agents** 檢視連線狀態。
+3. **任務即時串流**：Web 派發 Issue 給該 Agent 後，Daemon 認領任務並在本機 `AGENT_WORKDIR` 執行，同時透過 WebSocket 與 API 將 Log 即時回傳至看板。
 
 ---
 
@@ -39,7 +79,7 @@ cp .env.example .env
 | :--- | :--- | :--- |
 | `PORT` | `8080` | API & Web 服務埠號 |
 | `DATABASE_URL` | `postgres://teamagents:password@localhost:5432/teamagents?sslmode=disable` | PostgreSQL 連線字串 |
-| `JWT_SECRET` | *(自訂)* | JWT 身份驗證金鑰 |
+| `JWT_SECRET` | *(自訂)* | JWT 身份驗證金鑰（需與 MemAuth SSO 保持一致） |
 | `DEV_OTP_CODE` | `888888` | 開發環境免寄信 OTP 驗證碼 |
 
 ### 2. 啟動資料庫
@@ -57,14 +97,6 @@ make run-api
 ```
 
 開啟瀏覽器造訪 `http://localhost:8080` 即可使用完整介面。
-
-### 4. 運行 Daemon (可選)
-
-用於執行區域 Agent 任務與 CLI 綁定：
-
-```bash
-cd server && go run ./cmd/daemon
-```
 
 ---
 
