@@ -40,6 +40,10 @@ WORKSPACE_SLUG=your-workspace  # 工作區 Slug (例如 my-team)
 API_BASE=https://teamagents.justdrink.com.tw
 WS_URL=wss://teamagents.justdrink.com.tw/ws
 AGENT_WORKDIR=/path/to/your/project # 本機要讓 AI 操作的專案目錄
+LLAMA_MODEL=C:\llama.cpp\models\your-model.gguf
+LLAMA_CTX=4096
+LLAMA_NGL=999
+LLAMA_EXTRA_ARGS=
 ```
 
 ### 2. 編譯與執行 Daemon

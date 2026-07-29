@@ -31,6 +31,7 @@ var knownCLIs = []CLIProvider{
 	{Name: "codex", Bins: []string{"codex"}, TestArg: "--version"},
 	{Name: "cursor-agent", Bins: []string{"cursor-agent", "cursor"}, TestArg: "--version"},
 	{Name: "copilot", Bins: []string{"gh"}, TestArg: "copilot --version"},
+	{Name: "llama.cpp", Bins: []string{"llama-cli", "llama-cli.exe"}, TestArg: "--version"},
 	{Name: "opencode", Bins: []string{"opencode"}, TestArg: "--version"},
 	{Name: "gemini", Bins: []string{"gemini"}, TestArg: "--version"},
 	{Name: "kimi", Bins: []string{"kimi"}, TestArg: "--version"},
@@ -343,6 +344,12 @@ func (d *Daemon) runCLI(ctx context.Context, provider, prompt, taskID string) (s
 		cmd = exec.CommandContext(ctx, "cursor-agent", "--prompt", prompt)
 	case "opencode":
 		cmd = exec.CommandContext(ctx, "opencode", "run", "--prompt", prompt)
+	case "llama.cpp":
+		var err error
+		cmd, err = buildLlamaCommand(ctx, prompt)
+		if err != nil {
+			return "", 1, err
+		}
 	case "gemini":
 		cmd = exec.CommandContext(ctx, "gemini", prompt)
 	case "kimi":
@@ -466,4 +473,24 @@ func mustEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func buildLlamaCommand(ctx context.Context, prompt string) (*exec.Cmd, error) {
+	modelPath := strings.TrimSpace(os.Getenv("LLAMA_MODEL"))
+	if modelPath == "" {
+		return nil, fmt.Errorf("LLAMA_MODEL is required for llama.cpp provider")
+	}
+
+	args := []string{
+		"-m", modelPath,
+		"-c", mustEnv("LLAMA_CTX", "4096"),
+		"-ngl", mustEnv("LLAMA_NGL", "999"),
+		"-p", prompt,
+	}
+
+	if extra := strings.TrimSpace(os.Getenv("LLAMA_EXTRA_ARGS")); extra != "" {
+		args = append(args, strings.Fields(extra)...)
+	}
+
+	return exec.CommandContext(ctx, "llama-cli", args...), nil
 }

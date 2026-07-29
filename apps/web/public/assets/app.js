@@ -52,6 +52,7 @@
     codex: { label: "Codex", mark: "CX" },
     "cursor-agent": { label: "Cursor Agent", mark: "CA" },
     copilot: { label: "Copilot", mark: "CP" },
+    "llama.cpp": { label: "llama.cpp", mark: "LL" },
     opencode: { label: "OpenCode", mark: "OC" },
     gemini: { label: "Gemini", mark: "GM" },
     kimi: { label: "Kimi", mark: "KM" },
@@ -586,6 +587,11 @@
       `API_BASE=${base}`,
       `WS_URL=${config.wsUrl}`,
       "AGENT_WORKDIR=/path/to/your/project",
+      "# Optional for llama.cpp agents",
+      "LLAMA_MODEL=C:\\llama.cpp\\models\\your-model.gguf",
+      "LLAMA_CTX=4096",
+      "LLAMA_NGL=999",
+      "LLAMA_EXTRA_ARGS=",
     ].join("\n");
   }
 
