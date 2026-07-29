@@ -61,8 +61,11 @@ func RequireWorkspace(next http.Handler) http.Handler {
 		var workspaceID string
 		err := db.Pool.QueryRow(r.Context(),
 			`SELECT w.id FROM workspaces w
-			 JOIN workspace_members wm ON wm.workspace_id = w.id
-			 WHERE w.slug = $1 AND wm.user_id = $2`,
+			 LEFT JOIN workspace_members wm
+			   ON wm.workspace_id = w.id
+			  AND wm.user_id = $2
+			 WHERE w.slug = $1
+			   AND (w.owner_id = $2 OR wm.user_id IS NOT NULL)`,
 			workspaceSlug, userID,
 		).Scan(&workspaceID)
 

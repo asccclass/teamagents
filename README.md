@@ -28,7 +28,7 @@ teamagents/
 
 ## 🤖 TeamAgents Daemon 使用說明
 
-Daemon 是運行在開發者本機（或 Worker 伺服器）上的背景執行器，負責接收網頁派發的任務並使用本機的 AI CLI（`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `kimi`, `gh` 等）執行程式碼。
+Daemon 是運行在開發者本機（或 Worker 伺服器）上的背景執行器，負責接收網頁派發的任務並使用本機的 AI CLI（`claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `kimi`, `gh` 等）執行程式碼。Daemon 是 AI CLI 工具（claude、codex 等）和 TeamAgents Server 之間的橋樑。Server 本身不會直接呼叫 AI，而是把任務交給 Daemon 代為執行，這樣的設計讓 AI 工具可以在任何有安裝的機器上運行，不需要把 API key 集中在 Server 端。
 
 ### 1. 取得 `.env` 設定檔
 在 Web 介面開啟 **Workspace -> Settings** 點擊 `Copy Daemon Env`（或手動建立 `.env`）：

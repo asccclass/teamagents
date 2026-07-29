@@ -29,8 +29,10 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Pool.Query(r.Context(),
 		`SELECT w.id, w.slug, w.name, w.owner_id, w.created_at
 		 FROM workspaces w
-		 JOIN workspace_members wm ON wm.workspace_id = w.id
-		 WHERE wm.user_id = $1
+		 LEFT JOIN workspace_members wm
+		   ON wm.workspace_id = w.id
+		  AND wm.user_id = $1
+		 WHERE w.owner_id = $1 OR wm.user_id IS NOT NULL
 		 ORDER BY w.created_at DESC`,
 		userID,
 	)
