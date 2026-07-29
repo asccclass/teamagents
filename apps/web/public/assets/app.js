@@ -64,6 +64,19 @@
     done: "Done",
   };
 
+  const runtimeStatusLabels = {
+    online: "Online",
+    idle: "Idle",
+    busy: "Busy",
+    offline: "Offline",
+  };
+
+  function renderRuntimeStatus(status) {
+    const normalized = (status || "offline").toLowerCase();
+    const label = runtimeStatusLabels[normalized] || normalized.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+    return `<span class="runtime-status ${escapeAttr(normalized)}"><span class="runtime-status-light" aria-hidden="true"></span>${escapeHtml(label)}</span>`;
+  }
+
   const priorityOptions = ["low", "medium", "high", "urgent"];
 
   document.addEventListener("click", onClick);
@@ -780,7 +793,7 @@
               ${state.runtimes.map((runtime) => `
                 <div class="runtime-chip">
                   <strong>${escapeHtml(runtime.name)}</strong>
-                  <span class="muted mini"> ${escapeHtml(runtime.status)} | ${escapeHtml((runtime.available_clis || []).join(", ") || "No CLIs")}</span>
+                  <span class="muted mini">${renderRuntimeStatus(runtime.status)} | ${escapeHtml((runtime.available_clis || []).join(", ") || "No CLIs")}</span>
                 </div>
               `).join("")}
             </div>
@@ -906,7 +919,7 @@
               ${state.runtimes.map((runtime) => `
                 <div class="workspace-card">
                   <strong>${escapeHtml(runtime.name)}</strong>
-                  <p class="subtitle">${escapeHtml(runtime.hostname || "unknown host")} | ${escapeHtml((runtime.available_clis || []).join(", ") || "No CLIs")} | ${escapeHtml(runtime.status)}</p>
+                  <p class="subtitle">${escapeHtml(runtime.hostname || "unknown host")} | ${escapeHtml((runtime.available_clis || []).join(", ") || "No CLIs")} | ${renderRuntimeStatus(runtime.status)}</p>
                 </div>
               `).join("")}
             </div>
