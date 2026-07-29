@@ -206,6 +206,33 @@ func HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	respond.NoContent(w)
 }
 
+// DELETE /api/w/{workspace}/issues/{id}
+func HandleDelete(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.GetWorkspaceID(r.Context())
+	issueID := chi.URLParam(r, "id")
+
+	ct, err := db.Pool.Exec(r.Context(),
+		`DELETE FROM issues
+		 WHERE id = $1 AND workspace_id = $2`,
+		issueID, wsID,
+	)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to delete issue")
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		respond.Error(w, http.StatusNotFound, "issue not found")
+		return
+	}
+
+	ws.DefaultHub.BroadcastToWorkspace(wsID, ws.Message{
+		Type:    ws.TypeIssueUpdated,
+		Payload: map[string]string{"id": issueID, "deleted": "true"},
+	})
+
+	respond.NoContent(w)
+}
+
 func itoa(n int) string {
 	return string(rune('0' + n)) // 僅適用 1-9
 }

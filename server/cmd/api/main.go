@@ -95,6 +95,7 @@ func main() {
 			// 工作區（不需要指定 workspace）
 			r.Get("/workspaces", workspace.HandleList)
 			r.Post("/workspaces", workspace.HandleCreate)
+			r.Delete("/workspaces/{workspace}", workspace.HandleDelete)
 
 			// 工作區內的資源（需要 workspace 驗證）
 			r.Route("/w/{workspace}", func(r chi.Router) {
@@ -109,6 +110,7 @@ func main() {
 				r.Get("/issues", issue.HandleList)
 				r.Post("/issues", issue.HandleCreate)
 				r.Patch("/issues/{id}", issue.HandleUpdate)
+				r.Delete("/issues/{id}", issue.HandleDelete)
 
 				// Runtimes（Daemon 登記）
 				r.Get("/runtimes", runtime.HandleList)

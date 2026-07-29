@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/teamagents/server/internal/db"
 	"github.com/teamagents/server/internal/middleware"
@@ -126,4 +127,30 @@ func HandleCreate(w http.ResponseWriter, r *http.Request) {
 		"slug": body.Slug,
 		"name": body.Name,
 	})
+}
+
+// DELETE /api/workspaces/{workspace} — delete a workspace owned by the current user.
+func HandleDelete(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	workspaceSlug := strings.TrimSpace(strings.ToLower(chi.URLParam(r, "workspace")))
+	if workspaceSlug == "" {
+		respond.Error(w, http.StatusBadRequest, "workspace slug is required")
+		return
+	}
+
+	cmdTag, err := db.Pool.Exec(r.Context(),
+		`DELETE FROM workspaces
+		 WHERE slug = $1 AND owner_id = $2`,
+		workspaceSlug, userID,
+	)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to delete workspace")
+		return
+	}
+	if cmdTag.RowsAffected() == 0 {
+		respond.Error(w, http.StatusNotFound, "workspace not found")
+		return
+	}
+
+	respond.NoContent(w)
 }

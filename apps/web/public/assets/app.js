@@ -186,6 +186,14 @@
       handleDeleteAgent(target.dataset.id);
       return;
     }
+    if (action === "delete-issue") {
+      handleDeleteIssue(target.dataset.id);
+      return;
+    }
+    if (action === "delete-workspace") {
+      handleDeleteWorkspace(target.dataset.slug);
+      return;
+    }
     if (action === "delete-skill") {
       handleDeleteSkill(target.dataset.id);
       return;
@@ -377,6 +385,30 @@
     if (!confirm("Delete this agent?")) return;
     await api("DELETE", `/api/w/${state.route.workspace}/agents/${id}`);
     await loadWorkspaceSection();
+  }
+
+  async function handleDeleteIssue(id) {
+    if (!confirm("Delete this issue?")) return;
+    await api("DELETE", `/api/w/${state.route.workspace}/issues/${id}`);
+    await loadWorkspaceSection();
+  }
+
+  async function handleDeleteWorkspace(slug) {
+    if (!slug) return;
+    if (!confirm(`Delete workspace "${slug}"? This cannot be undone.`)) return;
+    try {
+      await api("DELETE", `/api/workspaces/${encodeURIComponent(slug)}`);
+      state.toast = "Workspace deleted.";
+      await loadWorkspaces();
+      if (state.route.name === "workspace" && state.route.workspace === slug) {
+        navigate("/dashboard", true);
+      } else {
+        render();
+      }
+    } catch (error) {
+      state.error = error.message;
+      render();
+    }
   }
 
   async function handleSaveSkill(form) {
@@ -617,15 +649,18 @@
 
   function renderWorkspaceCard(workspace) {
     return `
-      <a class="workspace-card" href="/dashboard/${workspace.slug}" data-action="navigate" data-href="/dashboard/${workspace.slug}">
-        <div class="workspace-pill">
+      <article class="workspace-card">
+        <a class="workspace-pill" href="/dashboard/${workspace.slug}" data-action="navigate" data-href="/dashboard/${workspace.slug}">
           <div class="workspace-mark">${escapeHtml(initials(workspace.name))}</div>
           <div>
             <h2 class="section-title">${escapeHtml(workspace.name)}</h2>
             <p class="subtitle">/${escapeHtml(workspace.slug)}</p>
           </div>
+        </a>
+        <div class="top-actions" style="margin-top:12px;">
+          <button class="btn btn-danger mini" data-action="delete-workspace" data-slug="${escapeAttr(workspace.slug)}">Delete</button>
         </div>
-      </a>
+      </article>
     `;
   }
 
@@ -707,8 +742,13 @@
     const agent = state.agents.find((item) => item.id === issue.assignee_agent_id);
     return `
       <article class="issue-card">
-        <h3 class="section-title">${escapeHtml(issue.title)}</h3>
-        <p class="subtitle">${escapeHtml(issue.body || "No description yet.")}</p>
+        <div class="page-header" style="margin-bottom:10px;">
+          <div>
+            <h3 class="section-title">${escapeHtml(issue.title)}</h3>
+            <p class="subtitle">${escapeHtml(issue.body || "No description yet.")}</p>
+          </div>
+          <button class="btn btn-danger mini" data-action="delete-issue" data-id="${issue.id}">Delete</button>
+        </div>
         <div class="top-actions" style="margin-top:14px;">
           <span class="mini ${priorityClass(issue.priority)}">#${issue.number} ${escapeHtml(issue.priority)}</span>
           ${agent ? `<span class="badge ${agent.status}">${escapeHtml(providerMeta[agent.provider]?.mark || "AG")} ${escapeHtml(agent.name)}</span>` : ""}
