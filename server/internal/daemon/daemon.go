@@ -1,10 +1,12 @@
 package daemon
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -31,6 +33,7 @@ var knownCLIs = []CLIProvider{
 	{Name: "codex", Bins: []string{"codex"}, TestArg: "--version"},
 	{Name: "cursor-agent", Bins: []string{"cursor-agent", "cursor"}, TestArg: "--version"},
 	{Name: "copilot", Bins: []string{"gh"}, TestArg: "copilot --version"},
+	{Name: "llama", Bins: []string{"llama-server", "llama-server.exe"}, TestArg: "--version"},
 	{Name: "llama.cpp", Bins: []string{"llama-cli", "llama-cli.exe"}, TestArg: "--version"},
 	{Name: "opencode", Bins: []string{"opencode"}, TestArg: "--version"},
 	{Name: "gemini", Bins: []string{"gemini"}, TestArg: "--version"},
@@ -155,6 +158,20 @@ func detectCLIs() []string {
 				found = append(found, cli.Name)
 				break
 			}
+		}
+	}
+	// 若已設定 LLAMA_SERVER_URL 或 LLAMA_API_BASE，視為 llama HTTP 服務可用
+	if serverURL := mustEnv("LLAMA_SERVER_URL", os.Getenv("LLAMA_API_BASE")); serverURL != "" {
+		hasLlama := false
+		for _, name := range found {
+			if name == "llama" {
+				hasLlama = true
+				break
+			}
+		}
+		if !hasLlama {
+			log.Printf("  ✅ llama → %s (HTTP)", serverURL)
+			found = append(found, "llama")
 		}
 	}
 	if len(found) == 0 {
@@ -336,6 +353,8 @@ func (d *Daemon) runCLI(ctx context.Context, provider, prompt, taskID string) (s
 	var cmd *exec.Cmd
 
 	switch provider {
+	case "llama":
+		return d.runLlamaHTTP(ctx, prompt, taskID)
 	case "claude":
 		cmd = exec.CommandContext(ctx, "claude", "--print", prompt)
 	case "codex":
@@ -493,4 +512,92 @@ func buildLlamaCommand(ctx context.Context, prompt string) (*exec.Cmd, error) {
 	}
 
 	return exec.CommandContext(ctx, "llama-cli", args...), nil
+}
+
+// ──────────────────────────────────────────
+// llama-server HTTP 執行器 (/v1/chat/completions)
+// ──────────────────────────────────────────
+
+func (d *Daemon) runLlamaHTTP(ctx context.Context, prompt, taskID string) (string, int, error) {
+	baseURL := mustEnv("LLAMA_SERVER_URL", os.Getenv("LLAMA_API_BASE"))
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	endpoint := strings.TrimRight(baseURL, "/") + "/v1/chat/completions"
+
+	model := mustEnv("LLAMA_MODEL", "local")
+
+	reqPayload := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"stream": true,
+	}
+
+	bodyBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		return "", 1, fmt.Errorf("序列化 llama 請求失敗: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", 1, fmt.Errorf("建立 llama HTTP 請求失敗: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey := os.Getenv("LLAMA_API_KEY"); apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", 1, fmt.Errorf("llama-server 連線失敗 (%s): %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	var outputBuf strings.Builder
+	sw := &streamWriter{
+		buf:    &outputBuf,
+		taskID: taskID,
+		daemon: d,
+		ctx:    ctx,
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("llama-server 回應錯誤 [HTTP %d]: %s", resp.StatusCode, string(respBody))
+		sw.Write([]byte(errMsg))
+		return outputBuf.String(), 1, fmt.Errorf("%s", errMsg)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		dataStr := strings.TrimPrefix(line, "data: ")
+		if dataStr == "[DONE]" {
+			break
+		}
+
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(dataStr), &chunk); err == nil {
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				sw.Write([]byte(chunk.Choices[0].Delta.Content))
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return outputBuf.String(), 1, fmt.Errorf("讀取 llama 串流失敗: %w", err)
+	}
+
+	return outputBuf.String(), 0, nil
 }

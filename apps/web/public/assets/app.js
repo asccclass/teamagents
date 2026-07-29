@@ -52,6 +52,7 @@
     codex: { label: "Codex", mark: "CX" },
     "cursor-agent": { label: "Cursor Agent", mark: "CA" },
     copilot: { label: "Copilot", mark: "CP" },
+    llama: { label: "llama (HTTP)", mark: "LM" },
     "llama.cpp": { label: "llama.cpp", mark: "LL" },
     opencode: { label: "OpenCode", mark: "OC" },
     gemini: { label: "Gemini", mark: "GM" },

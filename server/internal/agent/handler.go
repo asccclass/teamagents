@@ -18,6 +18,8 @@ var ValidProviders = map[string]bool{
 	"codex":        true,
 	"cursor-agent": true,
 	"copilot":      true,
+	"llama":        true,
+	"llama.cpp":    true,
 	"opencode":     true,
 	"gemini":       true,
 	"kimi":         true,
