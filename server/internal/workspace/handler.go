@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/teamagents/server/internal/db"
@@ -19,7 +20,7 @@ type Workspace struct {
 	Slug      string `json:"slug"`
 	Name      string `json:"name"`
 	OwnerID   string `json:"owner_id"`
-	CreatedAt string `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // GET /api/workspaces — 列出我的工作區
