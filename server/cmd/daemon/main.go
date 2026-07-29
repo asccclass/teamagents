@@ -7,20 +7,21 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/teamagents/server/internal/config"
+	"github.com/joho/godotenv"
 	"github.com/teamagents/server/internal/daemon"
 )
 
 func main() {
-	config.Load()
-	log.Println("🤖 TeamAgents Daemon 啟動中...")
+	// Load daemon env file if present without requiring server-only variables.
+	_ = godotenv.Load()
+	log.Println("TeamAgents Daemon starting...")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	d, err := daemon.New(ctx)
 	if err != nil {
-		log.Fatalf("Daemon 初始化失敗: %v", err)
+		log.Fatalf("daemon initialization failed: %v", err)
 	}
 
 	quit := make(chan os.Signal, 1)
@@ -28,14 +29,14 @@ func main() {
 
 	go func() {
 		if err := d.Run(ctx); err != nil {
-			log.Printf("Daemon 執行錯誤: %v", err)
+			log.Printf("daemon run error: %v", err)
 			quit <- syscall.SIGTERM
 		}
 	}()
 
 	<-quit
-	log.Println("🛑 Daemon 正在關閉...")
+	log.Println("Daemon shutting down...")
 	cancel()
 	d.Shutdown()
-	log.Println("✅ Daemon 已停止")
+	log.Println("Daemon stopped")
 }
