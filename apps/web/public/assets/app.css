@@ -380,6 +380,41 @@ button {
   padding: 10px 12px;
 }
 
+.runtime-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.runtime-status-light {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
+  flex: 0 0 auto;
+}
+
+.runtime-status.online .runtime-status-light {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+.runtime-status.idle .runtime-status-light {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.16);
+}
+
+.runtime-status.busy .runtime-status-light {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+.runtime-status.offline .runtime-status-light {
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.14);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
