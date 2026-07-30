@@ -38,6 +38,9 @@
     currentWorkspace: null,
     issues: [],
     agents: [],
+    tasks: [],
+    taskProgress: {},
+    taskCollapsePrefs: {},
     skills: [],
     autopilots: [],
     runtimes: [],
@@ -45,6 +48,7 @@
     modal: null,
     ws: null,
     wsWorkspace: "",
+    collapsedTasks: {},
   };
 
   const providerMeta = {
@@ -201,6 +205,14 @@
       handleDeleteAgent(target.dataset.id);
       return;
     }
+    if (action === "toggle-task-output") {
+      toggleTaskOutput(target.dataset.id);
+      return;
+    }
+    if (action === "copy-task-output") {
+      copyTaskOutput(target.dataset.id);
+      return;
+    }
     if (action === "delete-issue") {
       handleDeleteIssue(target.dataset.id);
       return;
@@ -328,6 +340,18 @@
     if (section === "issues") {
       state.issues = await api("GET", `/api/w/${ws}/issues`);
       state.agents = await api("GET", `/api/w/${ws}/agents`);
+      state.tasks = await api("GET", `/api/w/${ws}/tasks`);
+      const knownTaskIds = new Set(state.tasks.map((item) => item.id));
+      Object.keys(state.taskProgress).forEach((taskId) => {
+        if (!knownTaskIds.has(taskId)) {
+          delete state.taskProgress[taskId];
+        }
+      });
+      Object.keys(state.taskCollapsePrefs).forEach((taskId) => {
+        if (!knownTaskIds.has(taskId)) {
+          delete state.taskCollapsePrefs[taskId];
+        }
+      });
     }
     if (section === "agents") {
       state.agents = await api("GET", `/api/w/${ws}/agents`);
@@ -537,7 +561,23 @@
     socket.onmessage = async (event) => {
       try {
         const message = JSON.parse(event.data);
-        if (message.type === "issue:updated") {
+        if (message.type === "task:progress") {
+          const taskId = message.payload && message.payload.task_id;
+          const line = message.payload && message.payload.line;
+          if (taskId && typeof line === "string") {
+            state.taskProgress[taskId] = (state.taskProgress[taskId] || "") + line;
+            render();
+            return;
+          }
+        }
+        if (message.type === "task:status") {
+          const taskId = message.payload && message.payload.task_id;
+          const status = message.payload && message.payload.status;
+          if (taskId && status && ["done", "failed", "cancelled"].includes(String(status))) {
+            delete state.taskProgress[taskId];
+          }
+        }
+        if (message.type === "issue:updated" || message.type === "task:status" || message.type === "task:progress") {
           await loadWorkspaceSection();
         }
       } catch (_) {}
@@ -760,6 +800,7 @@
 
   function renderIssueCard(issue) {
     const agent = state.agents.find((item) => item.id === issue.assignee_agent_id);
+    const task = latestTaskForIssue(issue.id);
     return `
       <article class="issue-card">
         <div class="page-header" style="margin-bottom:10px;">
@@ -773,8 +814,94 @@
           <span class="mini ${priorityClass(issue.priority)}">#${issue.number} ${escapeHtml(issue.priority)}</span>
           ${agent ? `<span class="badge ${agent.status}">${escapeHtml(providerMeta[agent.provider]?.mark || "AG")} ${escapeHtml(agent.name)}</span>` : ""}
         </div>
+        ${renderTaskResult(task)}
       </article>
     `;
+  }
+
+  function latestTaskForIssue(issueId) {
+    const matches = state.tasks.filter((item) => item.issue_id === issueId);
+    if (!matches.length) return null;
+    return matches.reduce((latest, current) => {
+      return new Date(current.created_at || 0) > new Date(latest.created_at || 0) ? current : latest;
+    });
+  }
+
+  function renderTaskResult(task) {
+    if (!task) {
+      return `<div class="panel" style="margin-top:14px;"><p class="muted mini">No task has been created for this issue yet.</p></div>`;
+    }
+
+    const taskId = task.id;
+    const liveOutput = state.taskProgress[task.id] || "";
+    const output = (task.stdout_log || "").trim();
+    const displayOutput = (liveOutput || output).trim();
+    const error = (task.error_msg || "").trim();
+    const startedAt = task.started_at ? formatDateTime(task.started_at) : "";
+    const finishedAt = task.finished_at ? formatDateTime(task.finished_at) : "";
+    const isCollapsed = getTaskCollapsed(task);
+    const canCopy = !!displayOutput;
+
+    return `
+      <div class="panel" style="margin-top:14px;">
+        <div class="top-actions" style="margin-bottom:10px;">
+          <span class="badge ${escapeAttr(task.status || "queued")}">${escapeHtml(task.status || "queued")}</span>
+          <span class="muted mini">${escapeHtml(providerMeta[task.provider]?.label || task.provider || "Unknown provider")}</span>
+          ${typeof task.exit_code === "number" ? `<span class="muted mini">exit ${escapeHtml(String(task.exit_code))}</span>` : ""}
+        </div>
+        ${startedAt || finishedAt ? `<p class="muted mini">Started: ${escapeHtml(startedAt || "-")} | Finished: ${escapeHtml(finishedAt || "-")}</p>` : ""}
+        ${liveOutput && task.status === "running" ? `<p class="muted mini">Streaming live output...</p>` : ""}
+        ${displayOutput ? `
+          <div class="top-actions" style="margin-top:10px;">
+            <button class="btn btn-secondary mini" data-action="toggle-task-output" data-id="${escapeAttr(taskId)}">${isCollapsed ? "Expand output" : "Collapse output"}</button>
+            <button class="btn btn-secondary mini" data-action="copy-task-output" data-id="${escapeAttr(taskId)}" ${canCopy ? "" : "disabled"}>Copy output</button>
+          </div>
+          ${isCollapsed ? `<p class="muted mini" style="margin-top:10px;">Output hidden.</p>` : `<pre class="code-block" style="margin-top:10px; white-space:pre-wrap;">${escapeHtml(displayOutput)}</pre>`}
+        ` : ""}
+        ${!displayOutput && task.status === "running" ? `<p class="muted mini">Task is running. Output will appear here.</p>` : ""}
+        ${!output && task.status === "queued" ? `<p class="muted mini">Task is queued and waiting for a runtime.</p>` : ""}
+        ${error ? `<p class="error" style="margin-top:10px;">${escapeHtml(error)}</p>` : ""}
+      </div>
+    `;
+  }
+
+  function toggleTaskOutput(taskId) {
+    const task = state.tasks.find((item) => item.id === taskId);
+    const nextValue = task ? !getTaskCollapsed(task) : !state.collapsedTasks[taskId];
+    state.collapsedTasks[taskId] = nextValue;
+    state.taskCollapsePrefs[taskId] = true;
+    render();
+  }
+
+  async function copyTaskOutput(taskId) {
+    const task = state.tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const text = (state.taskProgress[taskId] || task.stdout_log || "").trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      state.toast = "Task output copied.";
+      render();
+    } catch (_) {
+      state.error = "Failed to copy task output.";
+      render();
+    }
+  }
+
+  function formatDateTime(value) {
+    try {
+      return new Date(value).toLocaleString();
+    } catch (_) {
+      return value || "";
+    }
+  }
+
+  function getTaskCollapsed(task) {
+    if (!task) return false;
+    if (state.taskCollapsePrefs[task.id]) {
+      return !!state.collapsedTasks[task.id];
+    }
+    return !["running", "claimed", "queued"].includes(String(task.status || "").toLowerCase());
   }
 
   function renderAgents() {
