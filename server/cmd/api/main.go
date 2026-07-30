@@ -108,6 +108,8 @@ func main() {
 				r.Delete("/agents/{id}", agent.HandleDelete)
 				r.Get("/agents/{id}/chat", chat.HandleGetThread)
 				r.Post("/agents/{id}/chat", chat.HandleSendMessage)
+				r.Delete("/agents/{id}/chat", chat.HandleClearThread)
+				r.Post("/agents/{id}/chat/new", chat.HandleNewThread)
 
 				// Issues
 				r.Get("/issues", issue.HandleList)

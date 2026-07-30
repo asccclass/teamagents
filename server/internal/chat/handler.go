@@ -15,6 +15,11 @@ import (
 	"github.com/teamagents/server/internal/ws"
 )
 
+const (
+	labelChatThread = "chat-thread"
+	labelChatActive = "chat-active"
+)
+
 type Thread struct {
 	Issue        *ThreadIssue    `json:"issue"`
 	Comments     []ThreadComment `json:"comments"`
@@ -86,36 +91,10 @@ func HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var issueID string
-	if err := tx.QueryRow(r.Context(), `
-		SELECT id
-		  FROM issues
-		 WHERE workspace_id = $1
-		   AND creator_id = $2
-		   AND assignee_agent_id = $3
-		   AND labels @> ARRAY[$4, $5]::text[]
-		 ORDER BY updated_at DESC
-		 LIMIT 1
-	`, wsID, userID, agentID, "chat-thread", "chat-agent:"+agentID).Scan(&issueID); err != nil {
-		if err != pgx.ErrNoRows {
-			respond.Error(w, http.StatusInternalServerError, "failed to find chat thread")
-			return
-		}
-
-		var title string
-		if err := tx.QueryRow(r.Context(), "SELECT name FROM agents WHERE id=$1 AND workspace_id=$2", agentID, wsID).Scan(&title); err != nil {
-			respond.Error(w, http.StatusNotFound, "agent not found")
-			return
-		}
-
-		if err := tx.QueryRow(r.Context(), `
-			INSERT INTO issues (workspace_id, title, body, priority, assignee_agent_id, creator_id, labels, status)
-			VALUES ($1, $2, '', 'medium', $3, $4, $5, 'open')
-			RETURNING id
-		`, wsID, "Chat with "+title, agentID, userID, []string{"chat-thread", "chat-agent:" + agentID}).Scan(&issueID); err != nil {
-			respond.Error(w, http.StatusInternalServerError, "failed to create chat thread")
-			return
-		}
+	issueID, err := ensureThread(r.Context(), tx, wsID, userID, agentID, false)
+	if err != nil {
+		handleThreadError(w, err)
+		return
 	}
 
 	var commentID string
@@ -159,18 +138,7 @@ func HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws.DefaultHub.BroadcastToWorkspace(wsID, ws.Message{
-		Type: ws.TypeChatUpdated,
-		Payload: map[string]string{
-			"agent_id": agentID,
-			"issue_id": issueID,
-			"task_id":  taskID,
-		},
-	})
-	ws.DefaultHub.BroadcastToWorkspace(wsID, ws.Message{
-		Type:    ws.TypeTaskStatus,
-		Payload: map[string]any{"task_id": taskID, "status": "queued"},
-	})
+	broadcastThreadUpdate(wsID, agentID, issueID, taskID)
 
 	thread, err := loadThread(r.Context(), wsID, userID, agentID)
 	if err != nil {
@@ -180,27 +148,93 @@ func HandleSendMessage(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusCreated, thread)
 }
 
+func HandleClearThread(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.GetWorkspaceID(r.Context())
+	userID := middleware.GetUserID(r.Context())
+	agentID := chi.URLParam(r, "id")
+
+	threadInfo, err := findThreadMeta(r.Context(), wsID, userID, agentID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to find chat thread")
+		return
+	}
+	if threadInfo == nil {
+		respond.JSON(w, http.StatusOK, Thread{Comments: []ThreadComment{}, PendingTasks: []PendingTask{}})
+		return
+	}
+
+	if _, err := db.Pool.Exec(r.Context(), `
+		DELETE FROM issues
+		 WHERE id = $1
+		   AND workspace_id = $2
+	`, threadInfo.ID, wsID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to clear chat thread")
+		return
+	}
+
+	broadcastThreadUpdate(wsID, agentID, "", "")
+	respond.JSON(w, http.StatusOK, Thread{Comments: []ThreadComment{}, PendingTasks: []PendingTask{}})
+}
+
+func HandleNewThread(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.GetWorkspaceID(r.Context())
+	userID := middleware.GetUserID(r.Context())
+	agentID := chi.URLParam(r, "id")
+
+	tx, err := db.Pool.Begin(r.Context())
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to start chat transaction")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	issueID, err := ensureThread(r.Context(), tx, wsID, userID, agentID, true)
+	if err != nil {
+		handleThreadError(w, err)
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to create new thread")
+		return
+	}
+
+	broadcastThreadUpdate(wsID, agentID, issueID, "")
+
+	thread, err := loadThread(r.Context(), wsID, userID, agentID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "new thread created but reload failed")
+		return
+	}
+	respond.JSON(w, http.StatusCreated, thread)
+}
+
+type threadMeta struct {
+	ID       string
+	IsActive bool
+}
+
 func loadThread(ctx context.Context, wsID, userID, agentID string) (Thread, error) {
 	var thread Thread
 
-	var issue ThreadIssue
-	err := db.Pool.QueryRow(ctx, `
-		SELECT id, number, title, status, created_at, updated_at
-		  FROM issues
-		 WHERE workspace_id = $1
-		   AND creator_id = $2
-		   AND assignee_agent_id = $3
-		   AND labels @> ARRAY[$4, $5]::text[]
-		 ORDER BY updated_at DESC
-		 LIMIT 1
-	`, wsID, userID, agentID, "chat-thread", "chat-agent:"+agentID).Scan(
-		&issue.ID, &issue.Number, &issue.Title, &issue.Status, &issue.CreatedAt, &issue.UpdatedAt,
-	)
-	if err == pgx.ErrNoRows {
+	threadInfo, err := findThreadMeta(ctx, wsID, userID, agentID)
+	if err != nil {
+		return thread, err
+	}
+	if threadInfo == nil {
 		thread.Comments = []ThreadComment{}
 		thread.PendingTasks = []PendingTask{}
 		return thread, nil
 	}
+
+	var issue ThreadIssue
+	err = db.Pool.QueryRow(ctx, `
+		SELECT id, number, title, status, created_at, updated_at
+		  FROM issues
+		 WHERE id = $1
+	`, threadInfo.ID).Scan(
+		&issue.ID, &issue.Number, &issue.Title, &issue.Status, &issue.CreatedAt, &issue.UpdatedAt,
+	)
 	if err != nil {
 		return thread, err
 	}
@@ -252,4 +286,144 @@ func loadThread(ctx context.Context, wsID, userID, agentID string) (Thread, erro
 	}
 
 	return thread, nil
+}
+
+func findThreadMeta(ctx context.Context, wsID, userID, agentID string) (*threadMeta, error) {
+	var active threadMeta
+	err := db.Pool.QueryRow(ctx, `
+		SELECT id, TRUE
+		  FROM issues
+		 WHERE workspace_id = $1
+		   AND creator_id = $2
+		   AND assignee_agent_id = $3
+		   AND labels @> ARRAY[$4, $5, $6]::text[]
+		 ORDER BY updated_at DESC
+		 LIMIT 1
+	`, wsID, userID, agentID, labelChatThread, labelChatActive, "chat-agent:"+agentID).Scan(&active.ID, &active.IsActive)
+	if err == nil {
+		return &active, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, err
+	}
+
+	var latest threadMeta
+	err = db.Pool.QueryRow(ctx, `
+		SELECT id, FALSE
+		  FROM issues
+		 WHERE workspace_id = $1
+		   AND creator_id = $2
+		   AND assignee_agent_id = $3
+		   AND labels @> ARRAY[$4, $5]::text[]
+		 ORDER BY updated_at DESC
+		 LIMIT 1
+	`, wsID, userID, agentID, labelChatThread, "chat-agent:"+agentID).Scan(&latest.ID, &latest.IsActive)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &latest, nil
+}
+
+func ensureThread(ctx context.Context, tx pgx.Tx, wsID, userID, agentID string, forceNew bool) (string, error) {
+	if forceNew {
+		if _, err := tx.Exec(ctx, `
+			UPDATE issues
+			   SET labels = array_remove(labels, $1),
+			       status = CASE WHEN status IN ('open','in_progress') THEN 'done' ELSE status END,
+			       updated_at = NOW()
+			 WHERE workspace_id = $2
+			   AND creator_id = $3
+			   AND assignee_agent_id = $4
+			   AND labels @> ARRAY[$1, $5, $6]::text[]
+		`, labelChatActive, wsID, userID, agentID, labelChatThread, "chat-agent:"+agentID); err != nil {
+			return "", err
+		}
+		return createThread(ctx, tx, wsID, userID, agentID)
+	}
+
+	var issueID string
+	err := tx.QueryRow(ctx, `
+		SELECT id
+		  FROM issues
+		 WHERE workspace_id = $1
+		   AND creator_id = $2
+		   AND assignee_agent_id = $3
+		   AND labels @> ARRAY[$4, $5, $6]::text[]
+		 ORDER BY updated_at DESC
+		 LIMIT 1
+	`, wsID, userID, agentID, labelChatThread, labelChatActive, "chat-agent:"+agentID).Scan(&issueID)
+	if err == nil {
+		return issueID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+
+	err = tx.QueryRow(ctx, `
+		SELECT id
+		  FROM issues
+		 WHERE workspace_id = $1
+		   AND creator_id = $2
+		   AND assignee_agent_id = $3
+		   AND labels @> ARRAY[$4, $5]::text[]
+		 ORDER BY updated_at DESC
+		 LIMIT 1
+	`, wsID, userID, agentID, labelChatThread, "chat-agent:"+agentID).Scan(&issueID)
+	if err == nil {
+		_, err = tx.Exec(ctx, `
+			UPDATE issues
+			   SET labels = CASE WHEN NOT labels @> ARRAY[$1]::text[] THEN array_append(labels, $1) ELSE labels END,
+			       updated_at = NOW()
+			 WHERE id = $2
+		`, labelChatActive, issueID)
+		return issueID, err
+	}
+	if err != pgx.ErrNoRows {
+		return "", err
+	}
+
+	return createThread(ctx, tx, wsID, userID, agentID)
+}
+
+func createThread(ctx context.Context, tx pgx.Tx, wsID, userID, agentID string) (string, error) {
+	var title string
+	if err := tx.QueryRow(ctx, "SELECT name FROM agents WHERE id=$1 AND workspace_id=$2", agentID, wsID).Scan(&title); err != nil {
+		return "", err
+	}
+
+	var issueID string
+	err := tx.QueryRow(ctx, `
+		INSERT INTO issues (workspace_id, title, body, priority, assignee_agent_id, creator_id, labels, status)
+		VALUES ($1, $2, '', 'medium', $3, $4, $5, 'open')
+		RETURNING id
+	`, wsID, "Chat with "+title, agentID, userID, []string{labelChatThread, labelChatActive, "chat-agent:" + agentID}).Scan(&issueID)
+	return issueID, err
+}
+
+func broadcastThreadUpdate(wsID, agentID, issueID, taskID string) {
+	ws.DefaultHub.BroadcastToWorkspace(wsID, ws.Message{
+		Type: ws.TypeChatUpdated,
+		Payload: map[string]string{
+			"agent_id": agentID,
+			"issue_id": issueID,
+			"task_id":  taskID,
+		},
+	})
+	if taskID != "" {
+		ws.DefaultHub.BroadcastToWorkspace(wsID, ws.Message{
+			Type:    ws.TypeTaskStatus,
+			Payload: map[string]any{"task_id": taskID, "status": "queued"},
+		})
+	}
+}
+
+func handleThreadError(w http.ResponseWriter, err error) {
+	if err == pgx.ErrNoRows {
+		respond.Error(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	respond.Error(w, http.StatusInternalServerError, "failed to prepare chat thread")
 }

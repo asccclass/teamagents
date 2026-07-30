@@ -226,6 +226,14 @@
       loadSelectedChatThread();
       return;
     }
+    if (action === "chat-clear-thread") {
+      handleClearChatThread();
+      return;
+    }
+    if (action === "chat-new-thread") {
+      handleNewChatThread();
+      return;
+    }
     if (action === "copy-task-output") {
       copyTaskOutput(target.dataset.id);
       return;
@@ -650,6 +658,36 @@
     }
   }
 
+  async function handleClearChatThread() {
+    const ws = state.route.workspace;
+    const agentId = state.selectedChatAgentId;
+    if (!ws || !agentId) return;
+    if (!confirm("Clear the current chat thread? This will remove its messages and tasks.")) return;
+    try {
+      state.chatThread = await api("DELETE", `/api/w/${ws}/agents/${agentId}/chat`);
+      state.chatDraft = "";
+      await loadWorkspaceSection();
+    } catch (error) {
+      state.error = error.message;
+      render();
+    }
+  }
+
+  async function handleNewChatThread() {
+    const ws = state.route.workspace;
+    const agentId = state.selectedChatAgentId;
+    if (!ws || !agentId) return;
+    if (!confirm("Start a new chat thread with this agent? The current thread will be archived.")) return;
+    try {
+      state.chatThread = await api("POST", `/api/w/${ws}/agents/${agentId}/chat/new`, {});
+      state.chatDraft = "";
+      await loadWorkspaceSection();
+    } catch (error) {
+      state.error = error.message;
+      render();
+    }
+  }
+
   async function handleAgentAvatarInput(input) {
     const file = input.files && input.files[0];
     if (!file) {
@@ -922,6 +960,10 @@
               <h3 class="section-title">${escapeHtml(agent.name)}</h3>
               <p class="subtitle">${escapeHtml(providerMeta[agent.provider]?.label || agent.provider)}</p>
             </div>
+          </div>
+          <div class="top-actions">
+            <button class="btn btn-secondary mini" type="button" data-action="chat-new-thread">New thread</button>
+            <button class="btn btn-secondary mini" type="button" data-action="chat-clear-thread" ${state.chatThread && state.chatThread.issue ? "" : "disabled"}>Clear chat</button>
           </div>
         </div>
         <div class="chat-transcript">
