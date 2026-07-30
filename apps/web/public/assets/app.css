@@ -408,6 +408,10 @@ button {
   overflow: auto;
 }
 
+.agent-select-search {
+  margin-bottom: 2px;
+}
+
 .agent-option {
   width: 100%;
   display: flex;

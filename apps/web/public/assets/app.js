@@ -43,6 +43,7 @@
     taskProgress: {},
     taskCollapsePrefs: {},
     agentPickerValues: {},
+    agentPickerSearches: {},
     skills: [],
     autopilots: [],
     runtimes: [],
@@ -278,6 +279,10 @@
     }
     if (target.matches("[data-model='agent-avatar']")) {
       handleAgentAvatarInput(target);
+    }
+    if (target.matches("[data-model='agent-picker-search']")) {
+      state.agentPickerSearches[target.dataset.target || ""] = target.value;
+      render();
     }
   }
 
@@ -582,9 +587,11 @@
     }
     if (type === "issue-create") {
       state.agentPickerValues.assignee_agent_id = "";
+      state.agentPickerSearches.assignee_agent_id = "";
     }
     if (type === "autopilot-create") {
       state.agentPickerValues.agent_id = "";
+      state.agentPickerSearches.agent_id = "";
     }
     state.modal = { type, id };
     render();
@@ -1345,6 +1352,10 @@
     const agents = sortedAgents(state.agents);
     const selected = selectedId || "";
     const selectedAgent = agents.find((agent) => agent.id === selected);
+    const keyword = String(state.agentPickerSearches[targetName] || "").trim().toLowerCase();
+    const filteredAgents = keyword
+      ? agents.filter((agent) => String(agent.name || "").toLowerCase().includes(keyword))
+      : agents;
     return `
       <details class="agent-select">
         <summary class="agent-select-trigger">
@@ -1357,18 +1368,20 @@
           `}
         </summary>
         <div class="agent-select-menu">
+          <input class="input agent-select-search" data-model="agent-picker-search" data-target="${escapeAttr(targetName)}" value="${escapeAttr(state.agentPickerSearches[targetName] || "")}" placeholder="Search agent...">
           ${allowEmpty ? `
             <button type="button" class="agent-option ${selected === "" ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="">
               <span class="agent-avatar sm"><span>NA</span></span>
               <span>Unassigned</span>
             </button>
           ` : ""}
-          ${agents.map((agent) => `
+          ${filteredAgents.map((agent) => `
             <button type="button" class="agent-option ${selected === agent.id ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="${escapeAttr(agent.id)}">
               ${renderAgentAvatar(agent, { size: "sm", online: isAgentOnline(agent) })}
               <span>${escapeHtml(agent.name)}</span>
             </button>
           `).join("")}
+          ${!filteredAgents.length ? `<p class="muted mini">No agents match "${escapeHtml(state.agentPickerSearches[targetName] || "")}".</p>` : ""}
         </div>
       </details>
     `;

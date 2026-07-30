@@ -201,6 +201,10 @@ func (d *Daemon) registerRuntime(ctx context.Context) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("runtime registration failed [HTTP %d]: %s", resp.StatusCode, string(respBody))
+	}
 
 	var result struct {
 		Data struct {
@@ -211,6 +215,9 @@ func (d *Daemon) registerRuntime(ctx context.Context) error {
 		return fmt.Errorf("解析回應失敗: %w", err)
 	}
 
+	if strings.TrimSpace(result.Data.ID) == "" {
+		return fmt.Errorf("runtime registration returned empty runtime id")
+	}
 	d.runtimeID = result.Data.ID
 	log.Printf("✅ Runtime 已登記: %s", d.runtimeID)
 	return nil
@@ -221,6 +228,10 @@ func (d *Daemon) registerRuntime(ctx context.Context) error {
 // ──────────────────────────────────────────
 
 func (d *Daemon) connectWS(ctx context.Context) error {
+	if strings.TrimSpace(d.runtimeID) == "" {
+		return fmt.Errorf("runtime_id is empty; skip websocket connect")
+	}
+
 	wsURL := fmt.Sprintf("%s?token=%s&workspace=%s&daemon=1&runtime_id=%s",
 		d.wsURL, d.token, d.workspaceSlug, d.runtimeID,
 	)
@@ -385,10 +396,10 @@ func (d *Daemon) runCLI(ctx context.Context, provider, prompt, taskID string) (s
 	// 逐行串流 stdout
 	var outputBuf strings.Builder
 	cmd.Stdout = &streamWriter{
-		buf:     &outputBuf,
-		taskID:  taskID,
-		daemon:  d,
-		ctx:     ctx,
+		buf:    &outputBuf,
+		taskID: taskID,
+		daemon: d,
+		ctx:    ctx,
 	}
 	cmd.Stderr = cmd.Stdout
 
