@@ -221,7 +221,8 @@
       return;
     }
     if (action === "select-chat-agent") {
-      state.selectedChatAgentId = target.dataset.id || "";
+      const nextId = target.dataset.id || "";
+      state.selectedChatAgentId = state.selectedChatAgentId === nextId ? "" : nextId;
       render();
       loadSelectedChatThread();
       return;
@@ -393,8 +394,8 @@
         delete state.taskCollapsePrefs[taskId];
       }
     });
-    if (!state.selectedChatAgentId || !state.agents.some((item) => item.id === state.selectedChatAgentId)) {
-      state.selectedChatAgentId = sortedAgents(state.agents)[0]?.id || "";
+    if (state.selectedChatAgentId && !state.agents.some((item) => item.id === state.selectedChatAgentId)) {
+      state.selectedChatAgentId = "";
     }
     await loadSelectedChatThread();
 
@@ -923,7 +924,12 @@
         <main class="page">
           ${state.toast ? `<p class="success">${escapeHtml(state.toast)}</p>` : ""}
           ${renderAgentChatDock()}
-          ${renderWorkspaceSection(section)}
+          <div class="workspace-main ${state.selectedChatAgentId ? "chat-open" : ""}">
+            <div class="workspace-content">
+              ${renderWorkspaceSection(section)}
+            </div>
+            ${renderAgentChatSidebar()}
+          </div>
           ${renderModal()}
         </main>
       </div>
@@ -932,7 +938,6 @@
 
   function renderAgentChatDock() {
     const agents = sortedAgents(state.agents);
-    const selectedAgent = agents.find((item) => item.id === state.selectedChatAgentId) || null;
     if (!agents.length) return "";
     return `
       <section class="panel chat-shell">
@@ -944,15 +949,21 @@
             </button>
           `).join("")}
         </div>
-        ${selectedAgent ? renderAgentChatPanel(selectedAgent) : ""}
       </section>
     `;
+  }
+
+  function renderAgentChatSidebar() {
+    const agents = sortedAgents(state.agents);
+    const selectedAgent = agents.find((item) => item.id === state.selectedChatAgentId) || null;
+    if (!selectedAgent) return "";
+    return renderAgentChatPanel(selectedAgent);
   }
 
   function renderAgentChatPanel(agent) {
     const messages = chatMessagesForAgent(agent.id);
     return `
-      <div class="chat-panel">
+      <aside class="chat-panel">
         <div class="page-header" style="margin-bottom:14px;">
           <div class="agent-heading">
             ${renderAgentAvatar(agent, { size: "lg", online: isAgentOnline(agent) })}
@@ -962,6 +973,7 @@
             </div>
           </div>
           <div class="top-actions">
+            <button class="btn btn-secondary mini" type="button" data-action="select-chat-agent" data-id="${escapeAttr(agent.id)}">Close</button>
             <button class="btn btn-secondary mini" type="button" data-action="chat-new-thread">New thread</button>
             <button class="btn btn-secondary mini" type="button" data-action="chat-clear-thread" ${state.chatThread && state.chatThread.issue ? "" : "disabled"}>Clear chat</button>
           </div>
@@ -977,7 +989,7 @@
             <button class="btn" type="submit">Send</button>
           </div>
         </form>
-      </div>
+      </aside>
     `;
   }
 

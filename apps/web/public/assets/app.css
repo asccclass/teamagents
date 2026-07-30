@@ -438,8 +438,7 @@ button {
 }
 
 .chat-shell {
-  display: grid;
-  gap: 16px;
+  display: block;
   margin-bottom: 18px;
 }
 
@@ -467,15 +466,39 @@ button {
   background: rgba(61, 124, 255, 0.12);
 }
 
+.workspace-main {
+  display: block;
+}
+
+.workspace-main.chat-open {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.workspace-content {
+  min-width: 0;
+}
+
 .chat-panel {
   display: grid;
   gap: 14px;
+  position: sticky;
+  top: 28px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  border-radius: 24px;
+  padding: 20px;
+  min-width: 0;
 }
 
 .chat-transcript {
   display: grid;
   gap: 12px;
-  max-height: 420px;
+  max-height: calc(100vh - 260px);
   overflow: auto;
   padding-right: 4px;
 }
@@ -714,5 +737,13 @@ button {
   .grid-3,
   .grid-2 {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-main.chat-open {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel {
+    position: static;
   }
 }
