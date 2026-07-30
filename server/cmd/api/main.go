@@ -18,6 +18,7 @@ import (
 	"github.com/teamagents/server/internal/agent"
 	"github.com/teamagents/server/internal/auth"
 	"github.com/teamagents/server/internal/autopilot"
+	"github.com/teamagents/server/internal/chat"
 	"github.com/teamagents/server/internal/config"
 	"github.com/teamagents/server/internal/db"
 	"github.com/teamagents/server/internal/issue"
@@ -105,6 +106,8 @@ func main() {
 				r.Post("/agents", agent.HandleCreate)
 				r.Put("/agents/{id}", agent.HandleUpdate)
 				r.Delete("/agents/{id}", agent.HandleDelete)
+				r.Get("/agents/{id}/chat", chat.HandleGetThread)
+				r.Post("/agents/{id}/chat", chat.HandleSendMessage)
 
 				// Issues
 				r.Get("/issues", issue.HandleList)

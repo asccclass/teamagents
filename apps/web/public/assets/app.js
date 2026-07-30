@@ -46,6 +46,8 @@
     agentPickerSearches: {},
     selectedChatAgentId: "",
     chatDraft: "",
+    chatThread: null,
+    chatLoading: false,
     skills: [],
     autopilots: [],
     runtimes: [],
@@ -221,6 +223,7 @@
     if (action === "select-chat-agent") {
       state.selectedChatAgentId = target.dataset.id || "";
       render();
+      loadSelectedChatThread();
       return;
     }
     if (action === "copy-task-output") {
@@ -385,6 +388,7 @@
     if (!state.selectedChatAgentId || !state.agents.some((item) => item.id === state.selectedChatAgentId)) {
       state.selectedChatAgentId = sortedAgents(state.agents)[0]?.id || "";
     }
+    await loadSelectedChatThread();
 
     if (section === "issues") {
     }
@@ -607,19 +611,36 @@
     render();
   }
 
+  async function loadSelectedChatThread() {
+    const ws = state.route.workspace;
+    const agentId = state.selectedChatAgentId;
+    if (!ws || !agentId) {
+      state.chatThread = null;
+      state.chatLoading = false;
+      return;
+    }
+    state.chatThread = null;
+    state.chatLoading = true;
+    render();
+    try {
+      state.chatThread = await api("GET", `/api/w/${ws}/agents/${agentId}/chat`);
+    } catch (error) {
+      state.error = error.message;
+      state.chatThread = null;
+    } finally {
+      state.chatLoading = false;
+      render();
+    }
+  }
+
   async function handleChatSend(form) {
     const ws = state.route.workspace;
     const text = String(new FormData(form).get("message") || "").trim();
     const agentId = state.selectedChatAgentId;
     if (!agentId || !text) return;
-    const agent = state.agents.find((item) => item.id === agentId);
     try {
-      await api("POST", `/api/w/${ws}/issues`, {
-        title: `Chat with ${agent ? agent.name : "agent"}`,
-        body: text,
-        priority: "medium",
-        assignee_agent_id: agentId,
-        labels: [`chat-agent:${agentId}`],
+      state.chatThread = await api("POST", `/api/w/${ws}/agents/${agentId}/chat`, {
+        message: text,
       });
       state.chatDraft = "";
       await loadWorkspaceSection();
@@ -684,7 +705,11 @@
             delete state.taskProgress[taskId];
           }
         }
-        if (message.type === "issue:updated" || message.type === "task:status" || message.type === "task:progress") {
+        if (message.type === "chat:updated") {
+          await loadSelectedChatThread();
+          return;
+        }
+        if (message.type === "issue:updated" || message.type === "task:status") {
           await loadWorkspaceSection();
         }
       } catch (_) {}
@@ -900,7 +925,9 @@
           </div>
         </div>
         <div class="chat-transcript">
-          ${messages.length ? messages.map(renderChatMessage).join("") : `<div class="empty"><p class="muted">No messages yet. Start chatting with this agent.</p></div>`}
+          ${state.chatLoading ? `<div class="empty"><p class="muted">Loading conversation...</p></div>` : ""}
+          ${!state.chatLoading && messages.length ? messages.map(renderChatMessage).join("") : ""}
+          ${!state.chatLoading && !messages.length ? `<div class="empty"><p class="muted">No messages yet. Start chatting with this agent.</p></div>` : ""}
         </div>
         <form class="chat-form" data-form="chat-send">
           <textarea class="textarea chat-input" data-model="chat-draft" name="message" placeholder="Type a message for this agent...">${escapeHtml(state.chatDraft)}</textarea>
@@ -913,30 +940,40 @@
   }
 
   function chatMessagesForAgent(agentId) {
-    const label = `chat-agent:${agentId}`;
-    const issues = state.issues
-      .filter((issue) => (issue.labels || []).includes(label))
-      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    if (agentId !== state.selectedChatAgentId || !state.chatThread) return [];
+    const comments = Array.isArray(state.chatThread.comments) ? state.chatThread.comments : [];
+    const pendingTasks = Array.isArray(state.chatThread.pending_tasks) ? state.chatThread.pending_tasks : [];
+    const pendingByCommentId = {};
+    pendingTasks.forEach((task) => {
+      if (task.source_comment_id) pendingByCommentId[task.source_comment_id] = task;
+    });
 
-    const messages = [];
-    for (const issue of issues) {
-      messages.push({
-        role: "user",
-        text: issue.body || issue.title || "",
-        createdAt: issue.created_at,
+    const messages = comments.map((comment) => {
+      const role = comment.author_agent_id ? "agent" : "user";
+      return {
+        id: comment.id,
+        role,
+        text: comment.body || "",
+        createdAt: comment.created_at,
         status: null,
+      };
+    });
+
+    comments.forEach((comment) => {
+      if (comment.author_agent_id) return;
+      const task = pendingByCommentId[comment.id];
+      if (!task) return;
+      const liveOutput = (state.taskProgress[task.id] || "").trim();
+      messages.push({
+        id: `pending-${task.id}`,
+        role: "agent",
+        text: liveOutput || pendingStatusLabel(task.status),
+        createdAt: task.started_at || task.created_at,
+        status: task.status || "queued",
       });
-      const task = latestTaskForIssue(issue.id);
-      const output = (state.taskProgress[task?.id] || task?.stdout_log || task?.error_msg || "").trim();
-      if (task || output) {
-        messages.push({
-          role: "agent",
-          text: output || (task && task.status === "queued" ? "Waiting for runtime..." : "Running..."),
-          createdAt: task?.created_at || issue.updated_at,
-          status: task?.status || "queued",
-        });
-      }
-    }
+    });
+
+    messages.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
     return messages;
   }
 
@@ -951,6 +988,14 @@
         <div class="chat-bubble">${escapeHtml(message.text || "")}</div>
       </article>
     `;
+  }
+
+  function pendingStatusLabel(status) {
+    if (status === "queued") return "Waiting for runtime...";
+    if (status === "claimed") return "Task claimed by runtime...";
+    if (status === "running") return "Thinking...";
+    if (status === "failed") return "Task failed.";
+    return "Working...";
   }
 
   function renderNavLink(section, label, activeSection) {
