@@ -44,6 +44,8 @@
     taskCollapsePrefs: {},
     agentPickerValues: {},
     agentPickerSearches: {},
+    selectedChatAgentId: "",
+    chatDraft: "",
     skills: [],
     autopilots: [],
     runtimes: [],
@@ -216,6 +218,11 @@
       toggleTaskOutput(target.dataset.id);
       return;
     }
+    if (action === "select-chat-agent") {
+      state.selectedChatAgentId = target.dataset.id || "";
+      render();
+      return;
+    }
     if (action === "copy-task-output") {
       copyTaskOutput(target.dataset.id);
       return;
@@ -284,6 +291,9 @@
       state.agentPickerSearches[target.dataset.target || ""] = target.value;
       render();
     }
+    if (target.matches("[data-model='chat-draft']")) {
+      state.chatDraft = target.value;
+    }
   }
 
   function onSubmit(event) {
@@ -300,6 +310,7 @@
     if (action === "agent-update") handleUpdateAgent(form);
     if (action === "skill-save") handleSaveSkill(form);
     if (action === "autopilot-create") handleCreateAutopilot(form);
+    if (action === "chat-send") handleChatSend(form);
   }
 
   async function handleSendOtp(form) {
@@ -356,37 +367,36 @@
   async function loadWorkspaceSection() {
     const ws = state.route.workspace;
     const section = state.route.section || "issues";
+    state.agents = await api("GET", `/api/w/${ws}/agents`);
+    state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
+    state.issues = await api("GET", `/api/w/${ws}/issues`);
+    state.tasks = await api("GET", `/api/w/${ws}/tasks`);
+    const knownTaskIds = new Set(state.tasks.map((item) => item.id));
+    Object.keys(state.taskProgress).forEach((taskId) => {
+      if (!knownTaskIds.has(taskId)) {
+        delete state.taskProgress[taskId];
+      }
+    });
+    Object.keys(state.taskCollapsePrefs).forEach((taskId) => {
+      if (!knownTaskIds.has(taskId)) {
+        delete state.taskCollapsePrefs[taskId];
+      }
+    });
+    if (!state.selectedChatAgentId || !state.agents.some((item) => item.id === state.selectedChatAgentId)) {
+      state.selectedChatAgentId = sortedAgents(state.agents)[0]?.id || "";
+    }
+
     if (section === "issues") {
-      state.issues = await api("GET", `/api/w/${ws}/issues`);
-      state.agents = await api("GET", `/api/w/${ws}/agents`);
-      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
-      state.tasks = await api("GET", `/api/w/${ws}/tasks`);
-      const knownTaskIds = new Set(state.tasks.map((item) => item.id));
-      Object.keys(state.taskProgress).forEach((taskId) => {
-        if (!knownTaskIds.has(taskId)) {
-          delete state.taskProgress[taskId];
-        }
-      });
-      Object.keys(state.taskCollapsePrefs).forEach((taskId) => {
-        if (!knownTaskIds.has(taskId)) {
-          delete state.taskCollapsePrefs[taskId];
-        }
-      });
     }
     if (section === "agents") {
-      state.agents = await api("GET", `/api/w/${ws}/agents`);
-      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
     }
     if (section === "skills") {
       state.skills = await api("GET", `/api/w/${ws}/skills`);
     }
     if (section === "autopilots") {
       state.autopilots = await api("GET", `/api/w/${ws}/autopilots`);
-      state.agents = await api("GET", `/api/w/${ws}/agents`);
-      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
     }
     if (section === "settings") {
-      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
     }
     render();
   }
@@ -597,6 +607,28 @@
     render();
   }
 
+  async function handleChatSend(form) {
+    const ws = state.route.workspace;
+    const text = String(new FormData(form).get("message") || "").trim();
+    const agentId = state.selectedChatAgentId;
+    if (!agentId || !text) return;
+    const agent = state.agents.find((item) => item.id === agentId);
+    try {
+      await api("POST", `/api/w/${ws}/issues`, {
+        title: `Chat with ${agent ? agent.name : "agent"}`,
+        body: text,
+        priority: "medium",
+        assignee_agent_id: agentId,
+        labels: [`chat-agent:${agentId}`],
+      });
+      state.chatDraft = "";
+      await loadWorkspaceSection();
+    } catch (error) {
+      state.error = error.message;
+      render();
+    }
+  }
+
   async function handleAgentAvatarInput(input) {
     const file = input.files && input.files[0];
     if (!file) {
@@ -624,7 +656,7 @@
 
   function connectWorkspaceSocket() {
     const wsName = state.route.workspace;
-    if (!state.token || state.route.section !== "issues") {
+    if (!state.token || state.route.name !== "workspace") {
       disconnectSocket();
       return;
     }
@@ -658,7 +690,7 @@
       } catch (_) {}
     };
     socket.onclose = function () {
-      if (state.route.name === "workspace" && state.route.section === "issues") {
+      if (state.route.name === "workspace") {
         setTimeout(connectWorkspaceSocket, 2500);
       }
     };
@@ -827,10 +859,97 @@
         </aside>
         <main class="page">
           ${state.toast ? `<p class="success">${escapeHtml(state.toast)}</p>` : ""}
+          ${renderAgentChatDock()}
           ${renderWorkspaceSection(section)}
           ${renderModal()}
         </main>
       </div>
+    `;
+  }
+
+  function renderAgentChatDock() {
+    const agents = sortedAgents(state.agents);
+    const selectedAgent = agents.find((item) => item.id === state.selectedChatAgentId) || null;
+    if (!agents.length) return "";
+    return `
+      <section class="panel chat-shell">
+        <div class="chat-agent-strip">
+          ${agents.map((agent) => `
+            <button class="chat-agent-tab ${agent.id === state.selectedChatAgentId ? "active" : ""}" data-action="select-chat-agent" data-id="${escapeAttr(agent.id)}">
+              ${renderAgentAvatar(agent, { size: "lg", online: isAgentOnline(agent) })}
+              <span class="mini">${escapeHtml(agent.name)}</span>
+            </button>
+          `).join("")}
+        </div>
+        ${selectedAgent ? renderAgentChatPanel(selectedAgent) : ""}
+      </section>
+    `;
+  }
+
+  function renderAgentChatPanel(agent) {
+    const messages = chatMessagesForAgent(agent.id);
+    return `
+      <div class="chat-panel">
+        <div class="page-header" style="margin-bottom:14px;">
+          <div class="agent-heading">
+            ${renderAgentAvatar(agent, { size: "lg", online: isAgentOnline(agent) })}
+            <div>
+              <h3 class="section-title">${escapeHtml(agent.name)}</h3>
+              <p class="subtitle">${escapeHtml(providerMeta[agent.provider]?.label || agent.provider)}</p>
+            </div>
+          </div>
+        </div>
+        <div class="chat-transcript">
+          ${messages.length ? messages.map(renderChatMessage).join("") : `<div class="empty"><p class="muted">No messages yet. Start chatting with this agent.</p></div>`}
+        </div>
+        <form class="chat-form" data-form="chat-send">
+          <textarea class="textarea chat-input" data-model="chat-draft" name="message" placeholder="Type a message for this agent...">${escapeHtml(state.chatDraft)}</textarea>
+          <div class="button-row">
+            <button class="btn" type="submit">Send</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  function chatMessagesForAgent(agentId) {
+    const label = `chat-agent:${agentId}`;
+    const issues = state.issues
+      .filter((issue) => (issue.labels || []).includes(label))
+      .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+
+    const messages = [];
+    for (const issue of issues) {
+      messages.push({
+        role: "user",
+        text: issue.body || issue.title || "",
+        createdAt: issue.created_at,
+        status: null,
+      });
+      const task = latestTaskForIssue(issue.id);
+      const output = (state.taskProgress[task?.id] || task?.stdout_log || task?.error_msg || "").trim();
+      if (task || output) {
+        messages.push({
+          role: "agent",
+          text: output || (task && task.status === "queued" ? "Waiting for runtime..." : "Running..."),
+          createdAt: task?.created_at || issue.updated_at,
+          status: task?.status || "queued",
+        });
+      }
+    }
+    return messages;
+  }
+
+  function renderChatMessage(message) {
+    return `
+      <article class="chat-message ${escapeAttr(message.role)}">
+        <div class="chat-message-meta">
+          <span>${escapeHtml(message.role === "user" ? "You" : "Agent")}</span>
+          <span class="muted mini">${escapeHtml(formatDateTime(message.createdAt) || "")}</span>
+          ${message.status ? `<span class="badge ${escapeAttr(message.status)}">${escapeHtml(message.status)}</span>` : ""}
+        </div>
+        <div class="chat-bubble">${escapeHtml(message.text || "")}</div>
+      </article>
     `;
   }
 
