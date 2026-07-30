@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -237,20 +238,28 @@ func buildChatPrompt(ctx context.Context, taskID, sourceCommentID string) (strin
 		return "", err
 	}
 
+	maxHistoryMessages := parsePositiveEnvInt("CHAT_HISTORY_MAX_MESSAGES", 12)
+	maxHistoryChars := parsePositiveEnvInt("CHAT_HISTORY_MAX_CHARS", 6000)
+	maxMessageChars := parsePositiveEnvInt("CHAT_MESSAGE_MAX_CHARS", 1200)
+
 	rows, err := db.Pool.Query(ctx, `
 		SELECT ic.author_user_id, ic.author_agent_id, ic.body, ic.created_at
 		  FROM issue_comments ic
 		 WHERE ic.issue_id = (SELECT issue_id FROM tasks WHERE id = $1)
 		   AND ic.created_at <= (SELECT created_at FROM issue_comments WHERE id = $2)
-		 ORDER BY ic.created_at ASC
-		 LIMIT 100
-	`, taskID, sourceCommentID)
+		 ORDER BY ic.created_at DESC
+		 LIMIT $3
+	`, taskID, sourceCommentID, maxHistoryMessages)
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
 
-	var transcript strings.Builder
+	type historyMessage struct {
+		role string
+		body string
+	}
+	var collected []historyMessage
 	for rows.Next() {
 		var authorUserID, authorAgentID *string
 		var body string
@@ -262,10 +271,22 @@ func buildChatPrompt(ctx context.Context, taskID, sourceCommentID string) (strin
 		if authorAgentID != nil {
 			role = "Assistant"
 		}
-		transcript.WriteString(role)
-		transcript.WriteString(": ")
-		transcript.WriteString(strings.TrimSpace(body))
-		transcript.WriteString("\n\n")
+		collected = append(collected, historyMessage{
+			role: role,
+			body: clampText(strings.TrimSpace(body), maxMessageChars),
+		})
+	}
+
+	var transcript strings.Builder
+	totalChars := 0
+	for i := len(collected) - 1; i >= 0; i-- {
+		entry := collected[i]
+		line := entry.role + ": " + entry.body + "\n\n"
+		if totalChars > 0 && totalChars+len(line) > maxHistoryChars {
+			continue
+		}
+		transcript.WriteString(line)
+		totalChars += len(line)
 	}
 
 	var prompt strings.Builder
@@ -286,6 +307,28 @@ func buildChatPrompt(ctx context.Context, taskID, sourceCommentID string) (strin
 	prompt.WriteString("\nConversation so far:\n")
 	prompt.WriteString(transcript.String())
 	return prompt.String(), nil
+}
+
+func clampText(value string, maxChars int) string {
+	if maxChars <= 0 || len(value) <= maxChars {
+		return value
+	}
+	if maxChars <= 3 {
+		return value[:maxChars]
+	}
+	return value[:maxChars-3] + "..."
+}
+
+func parsePositiveEnvInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	var value int
+	if _, err := fmt.Sscanf(raw, "%d", &value); err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 func syncTaskChatReply(ctx context.Context, wsID, taskID, status, stdout, errMsg string) error {
