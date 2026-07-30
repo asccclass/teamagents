@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -104,6 +103,7 @@ func main() {
 				// Agents
 				r.Get("/agents", agent.HandleList)
 				r.Post("/agents", agent.HandleCreate)
+				r.Put("/agents/{id}", agent.HandleUpdate)
 				r.Delete("/agents/{id}", agent.HandleDelete)
 
 				// Issues

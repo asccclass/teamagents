@@ -31,6 +31,7 @@
     authStep: "email",
     loginEmail: "",
     loginOtp: "",
+    agentAvatarDataUrl: "",
     loading: false,
     error: "",
     toast: "",
@@ -41,6 +42,7 @@
     tasks: [],
     taskProgress: {},
     taskCollapsePrefs: {},
+    agentPickerValues: {},
     skills: [],
     autopilots: [],
     runtimes: [],
@@ -205,12 +207,20 @@
       handleDeleteAgent(target.dataset.id);
       return;
     }
+    if (action === "edit-agent") {
+      openModal("agent-edit", target.dataset.id);
+      return;
+    }
     if (action === "toggle-task-output") {
       toggleTaskOutput(target.dataset.id);
       return;
     }
     if (action === "copy-task-output") {
       copyTaskOutput(target.dataset.id);
+      return;
+    }
+    if (action === "select-agent-option") {
+      selectAgentOption(target.dataset.target, target.dataset.id || "");
       return;
     }
     if (action === "delete-issue") {
@@ -266,6 +276,9 @@
       state.search = target.value;
       debounceSearch();
     }
+    if (target.matches("[data-model='agent-avatar']")) {
+      handleAgentAvatarInput(target);
+    }
   }
 
   function onSubmit(event) {
@@ -279,6 +292,7 @@
     if (action === "workspace-create") handleCreateWorkspace(form);
     if (action === "issue-create") handleCreateIssue(form);
     if (action === "agent-create") handleCreateAgent(form);
+    if (action === "agent-update") handleUpdateAgent(form);
     if (action === "skill-save") handleSaveSkill(form);
     if (action === "autopilot-create") handleCreateAutopilot(form);
   }
@@ -340,6 +354,7 @@
     if (section === "issues") {
       state.issues = await api("GET", `/api/w/${ws}/issues`);
       state.agents = await api("GET", `/api/w/${ws}/agents`);
+      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
       state.tasks = await api("GET", `/api/w/${ws}/tasks`);
       const knownTaskIds = new Set(state.tasks.map((item) => item.id));
       Object.keys(state.taskProgress).forEach((taskId) => {
@@ -363,6 +378,7 @@
     if (section === "autopilots") {
       state.autopilots = await api("GET", `/api/w/${ws}/autopilots`);
       state.agents = await api("GET", `/api/w/${ws}/agents`);
+      state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
     }
     if (section === "settings") {
       state.runtimes = await api("GET", `/api/w/${ws}/runtimes`);
@@ -411,8 +427,31 @@
         name: data.get("name"),
         provider: data.get("provider"),
         runtime_id: data.get("runtime_id") || null,
+        system_prompt: data.get("system_prompt") || "",
+        avatar_url: state.agentAvatarDataUrl || "",
       });
       state.modal = null;
+      state.agentAvatarDataUrl = "";
+      await loadWorkspaceSection();
+    } catch (error) {
+      state.error = error.message;
+      render();
+    }
+  }
+
+  async function handleUpdateAgent(form) {
+    const ws = state.route.workspace;
+    const data = new FormData(form);
+    try {
+      await api("PUT", `/api/w/${ws}/agents/${state.modal.id}`, {
+        name: data.get("name"),
+        provider: data.get("provider"),
+        runtime_id: data.get("runtime_id") || null,
+        system_prompt: data.get("system_prompt") || "",
+        avatar_url: state.agentAvatarDataUrl || "",
+      });
+      state.modal = null;
+      state.agentAvatarDataUrl = "";
       await loadWorkspaceSection();
     } catch (error) {
       state.error = error.message;
@@ -534,8 +573,37 @@
   function openModal(type, id) {
     state.error = "";
     state.toast = "";
+    if (type === "agent-create") {
+      state.agentAvatarDataUrl = "";
+    }
+    if (type === "agent-edit") {
+      const agent = state.agents.find((item) => item.id === id);
+      state.agentAvatarDataUrl = agent && agent.avatar_url ? agent.avatar_url : "";
+    }
+    if (type === "issue-create") {
+      state.agentPickerValues.assignee_agent_id = "";
+    }
+    if (type === "autopilot-create") {
+      state.agentPickerValues.agent_id = "";
+    }
     state.modal = { type, id };
     render();
+  }
+
+  async function handleAgentAvatarInput(input) {
+    const file = input.files && input.files[0];
+    if (!file) {
+      state.agentAvatarDataUrl = "";
+      render();
+      return;
+    }
+    try {
+      state.agentAvatarDataUrl = await readFileAsDataUrl(file);
+      render();
+    } catch (_) {
+      state.error = "Failed to read avatar file.";
+      render();
+    }
   }
 
   function toggleSkill(id) {
@@ -812,7 +880,7 @@
         </div>
         <div class="top-actions" style="margin-top:14px;">
           <span class="mini ${priorityClass(issue.priority)}">#${issue.number} ${escapeHtml(issue.priority)}</span>
-          ${agent ? `<span class="badge ${agent.status}">${escapeHtml(providerMeta[agent.provider]?.mark || "AG")} ${escapeHtml(agent.name)}</span>` : ""}
+          ${agent ? renderAgentPill(agent) : ""}
         </div>
         ${renderTaskResult(task)}
       </article>
@@ -936,18 +1004,26 @@
 
   function renderAgentCard(agent) {
     const runtime = state.runtimes.find((item) => item.id === agent.runtime_id);
+    const online = isAgentOnline(agent);
     return `
       <article class="agent-card">
         <div class="page-header" style="margin-bottom:10px;">
           <div>
-            <h3 class="section-title">${escapeHtml(agent.name)}</h3>
-            <p class="subtitle">${escapeHtml(providerMeta[agent.provider]?.label || agent.provider)}</p>
+            <div class="agent-heading">
+              ${renderAgentAvatar(agent, { size: "lg", online })}
+              <div>
+                <h3 class="section-title">${escapeHtml(agent.name)}</h3>
+                <p class="subtitle">${escapeHtml(providerMeta[agent.provider]?.label || agent.provider)}</p>
+              </div>
+            </div>
           </div>
           <div class="top-actions">
             <span class="badge ${agent.status}">${escapeHtml(agent.status)}</span>
+            <button class="btn btn-secondary mini" data-action="edit-agent" data-id="${agent.id}">Edit</button>
             <button class="btn btn-danger mini" data-action="delete-agent" data-id="${agent.id}">Delete</button>
           </div>
         </div>
+        ${agent.system_prompt ? `<p class="muted mini">Prompt: ${escapeHtml(agent.system_prompt)}</p>` : ""}
         <p class="muted mini">Runtime: ${escapeHtml(runtime ? runtime.name : "Unassigned")}</p>
       </article>
     `;
@@ -1015,6 +1091,7 @@
           <div>
             <h3 class="section-title">${escapeHtml(item.name)}</h3>
             <p class="subtitle">${escapeHtml(item.cron_expr || "Webhook trigger")} | ${escapeHtml(agent ? agent.name : "Unknown agent")}</p>
+            ${agent ? `<div style="margin-top:8px;">${renderAgentPill(agent)}</div>` : ""}
           </div>
           <div class="top-actions">
             <span class="badge ${item.enabled ? "good" : "bad"}">${item.enabled ? "Enabled" : "Disabled"}</span>
@@ -1092,6 +1169,7 @@
     }
 
     if (state.modal.type === "issue-create") {
+      const selectedAgentId = state.agentPickerValues.assignee_agent_id || "";
       return wrapModal(`
         <h3 class="section-title">Create issue</h3>
         ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
@@ -1105,10 +1183,8 @@
             </div>
             <div class="field">
               <label>Assign agent</label>
-              <select class="select" name="assignee_agent_id">
-                <option value="">Unassigned</option>
-                ${state.agents.map((agent) => `<option value="${agent.id}">${escapeHtml(agent.name)}</option>`).join("")}
-              </select>
+              <input type="hidden" name="assignee_agent_id" value="${escapeAttr(selectedAgentId)}">
+              ${renderAgentPicker("assignee_agent_id", selectedAgentId, true)}
             </div>
           </div>
           <div class="button-row">
@@ -1119,27 +1195,40 @@
       `);
     }
 
-    if (state.modal.type === "agent-create") {
+    if (state.modal.type === "agent-create" || state.modal.type === "agent-edit") {
+      const agent = state.modal.type === "agent-edit"
+        ? (state.agents.find((item) => item.id === state.modal.id) || { name: "", provider: "claude", runtime_id: "", system_prompt: "", avatar_url: "" })
+        : { name: "", provider: "claude", runtime_id: "", system_prompt: "", avatar_url: "" };
+      const avatarPreview = state.agentAvatarDataUrl || agent.avatar_url || "";
       return wrapModal(`
-        <h3 class="section-title">Create agent</h3>
+        <h3 class="section-title">${state.modal.type === "agent-edit" ? "Edit agent" : "Create agent"}</h3>
         ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
-        <form class="form-grid" data-form="agent-create">
-          <div class="field"><label>Name</label><input class="input" name="name" required></div>
+        <form class="form-grid" data-form="${state.modal.type === "agent-edit" ? "agent-update" : "agent-create"}">
+          <div class="agent-editor">
+            ${renderAgentAvatar({ name: agent.name || "Agent", avatar_url: avatarPreview }, { size: "xl", online: false })}
+            <div class="field">
+              <label>Avatar</label>
+              <input class="input" type="file" accept="image/*" data-model="agent-avatar">
+              <p class="muted mini">Upload an image to identify this agent everywhere in the workspace.</p>
+            </div>
+          </div>
+          <div class="field"><label>Name</label><input class="input" name="name" required value="${escapeAttr(agent.name || "")}"></div>
           <div class="grid-2">
             <div class="field">
               <label>Provider</label>
-              <select class="select" name="provider">${Object.entries(providerMeta).map(([key, meta]) => `<option value="${key}">${escapeHtml(meta.label)}</option>`).join("")}</select>
+              <select class="select" name="provider">${Object.entries(providerMeta).map(([key, meta]) => `<option value="${key}" ${agent.provider === key ? "selected" : ""}>${escapeHtml(meta.label)}</option>`).join("")}</select>
             </div>
             <div class="field">
               <label>Runtime</label>
               <select class="select" name="runtime_id">
                 <option value="">Unassigned</option>
-                ${state.runtimes.map((runtime) => `<option value="${runtime.id}">${escapeHtml(runtime.name)}</option>`).join("")}
+                ${state.runtimes.map((runtime) => `<option value="${runtime.id}" ${agent.runtime_id === runtime.id ? "selected" : ""}>${escapeHtml(runtime.name)}</option>`).join("")}
               </select>
             </div>
           </div>
+          <div class="field"><label>System prompt</label><textarea class="textarea" name="system_prompt">${escapeHtml(agent.system_prompt || "")}</textarea></div>
           <div class="button-row">
-            <button class="btn">Create</button>
+            <button class="btn">${state.modal.type === "agent-edit" ? "Save changes" : "Create"}</button>
             <button class="btn btn-secondary" type="button" data-action="close-modal">Cancel</button>
           </div>
         </form>
@@ -1183,6 +1272,7 @@
     }
 
     if (state.modal.type === "autopilot-create") {
+      const selectedAgentId = state.agentPickerValues.agent_id || "";
       return wrapModal(`
         <h3 class="section-title">Create autopilot</h3>
         ${state.error ? `<p class="error">${escapeHtml(state.error)}</p>` : ""}
@@ -1191,10 +1281,8 @@
           <div class="grid-2">
             <div class="field">
               <label>Agent</label>
-              <select class="select" name="agent_id" required>
-                <option value="">Select agent</option>
-                ${state.agents.map((agent) => `<option value="${agent.id}">${escapeHtml(agent.name)}</option>`).join("")}
-              </select>
+              <input type="hidden" name="agent_id" value="${escapeAttr(selectedAgentId)}" required>
+              ${renderAgentPicker("agent_id", selectedAgentId, false)}
             </div>
             <div class="field">
               <label>Cron preset</label>
@@ -1228,6 +1316,76 @@
 
   function wrapModal(content) {
     return `<div class="modal-backdrop"><section class="modal">${content}</section></div>`;
+  }
+
+  function renderAgentAvatar(agent, options) {
+    const size = options && options.size ? options.size : "sm";
+    const online = !!(options && options.online);
+    const avatarUrl = agent && agent.avatar_url ? agent.avatar_url : "";
+    const fallback = initials(agent && agent.name ? agent.name : "AG");
+    return `
+      <span class="agent-avatar ${escapeAttr(size)}">
+        ${avatarUrl ? `<img src="${escapeAttr(avatarUrl)}" alt="${escapeAttr(agent && agent.name ? agent.name : "Agent")}">` : `<span>${escapeHtml(fallback)}</span>`}
+        ${online ? `<span class="agent-online-dot" aria-hidden="true"></span>` : ""}
+      </span>
+    `;
+  }
+
+  function renderAgentPill(agent) {
+    return `
+      <span class="agent-pill">
+        ${renderAgentAvatar(agent, { size: "sm", online: isAgentOnline(agent) })}
+        <span class="badge ${escapeAttr(agent.status || "idle")}">${escapeHtml(providerMeta[agent.provider]?.mark || "AG")} ${escapeHtml(agent.name)}</span>
+      </span>
+    `;
+  }
+
+  function renderAgentPicker(targetName, selectedId, allowEmpty) {
+    const selected = selectedId || "";
+    return `
+      <div class="agent-picker">
+        ${allowEmpty ? `
+          <button type="button" class="agent-option ${selected === "" ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="">
+            <span class="agent-avatar sm"><span>NA</span></span>
+            <span>Unassigned</span>
+          </button>
+        ` : ""}
+        ${state.agents.map((agent) => `
+          <button type="button" class="agent-option ${selected === agent.id ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="${escapeAttr(agent.id)}">
+            ${renderAgentAvatar(agent, { size: "sm", online: isAgentOnline(agent) })}
+            <span>${escapeHtml(agent.name)}</span>
+          </button>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function selectAgentOption(targetName, id) {
+    state.agentPickerValues[targetName] = id;
+    const input = document.querySelector(`input[name="${targetName}"]`);
+    if (input) {
+      input.value = id;
+      const field = input.closest(".field");
+      if (field) {
+        field.querySelectorAll(".agent-option").forEach((node) => {
+          node.classList.toggle("selected", (node.dataset.id || "") === id);
+        });
+      }
+    }
+  }
+
+  function isAgentOnline(agent) {
+    const runtime = state.runtimes.find((item) => item.id === agent.runtime_id);
+    return !!runtime && ["online", "idle", "busy"].includes(String(runtime.status || "").toLowerCase());
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
   function initials(value) {
