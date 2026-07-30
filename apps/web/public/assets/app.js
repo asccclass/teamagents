@@ -620,7 +620,8 @@
     render();
   }
 
-  async function loadSelectedChatThread() {
+  async function loadSelectedChatThread(options) {
+    const opts = options || {};
     const ws = state.route.workspace;
     const agentId = state.selectedChatAgentId;
     if (!ws || !agentId) {
@@ -628,14 +629,18 @@
       state.chatLoading = false;
       return;
     }
-    state.chatThread = null;
-    state.chatLoading = true;
-    render();
+    if (!opts.preserve) {
+      state.chatThread = null;
+      state.chatLoading = true;
+      render();
+    }
     try {
       state.chatThread = await api("GET", `/api/w/${ws}/agents/${agentId}/chat`);
     } catch (error) {
       state.error = error.message;
-      state.chatThread = null;
+      if (!opts.preserve) {
+        state.chatThread = null;
+      }
     } finally {
       state.chatLoading = false;
       render();
@@ -743,9 +748,13 @@
           if (taskId && status && ["done", "failed", "cancelled"].includes(String(status))) {
             delete state.taskProgress[taskId];
           }
+          if (taskId && isSelectedChatTask(taskId)) {
+            render();
+            return;
+          }
         }
         if (message.type === "chat:updated") {
-          await loadSelectedChatThread();
+          await loadSelectedChatThread({ preserve: true });
           return;
         }
         if (message.type === "issue:updated" || message.type === "task:status") {
@@ -1050,6 +1059,13 @@
     if (status === "running") return "Thinking...";
     if (status === "failed") return "Task failed.";
     return "Working...";
+  }
+
+  function isSelectedChatTask(taskId) {
+    const pendingTasks = state.chatThread && Array.isArray(state.chatThread.pending_tasks)
+      ? state.chatThread.pending_tasks
+      : [];
+    return pendingTasks.some((task) => task.id === taskId);
   }
 
   function renderNavLink(section, label, activeSection) {

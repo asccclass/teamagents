@@ -484,6 +484,7 @@ button {
 .chat-panel {
   display: grid;
   gap: 14px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   position: sticky;
   top: 28px;
   border: 1px solid var(--line);
@@ -493,12 +494,13 @@ button {
   border-radius: 24px;
   padding: 20px;
   min-width: 0;
+  height: calc(100vh - 56px);
 }
 
 .chat-transcript {
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 260px);
+  min-height: 0;
   overflow: auto;
   padding-right: 4px;
 }
@@ -544,10 +546,13 @@ button {
 .chat-form {
   display: grid;
   gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(13, 17, 23, 0) 0%, rgba(13, 17, 23, 0.92) 18%);
 }
 
 .chat-input {
-  min-height: 120px;
+  min-height: 104px;
 }
 
 .grid-3 {
@@ -745,5 +750,6 @@ button {
 
   .chat-panel {
     position: static;
+    height: auto;
   }
 }
