@@ -1066,7 +1066,12 @@
     return `<div class="empty">Unknown section</div>`;
   }
 
+  function visibleIssues() {
+    return state.issues.filter((item) => !Array.isArray(item.labels) || !item.labels.includes("chat-thread"));
+  }
+
   function renderIssues() {
+    const issues = visibleIssues();
     return `
       <section class="stack">
         <div class="page-header">
@@ -1081,9 +1086,9 @@
             <div class="kanban-column">
               <div class="column-head">
                 <span class="badge ${status}">${statusLabels[status]}</span>
-                <span class="muted mini">${state.issues.filter((item) => item.status === status).length}</span>
+                <span class="muted mini">${issues.filter((item) => item.status === status).length}</span>
               </div>
-              ${(state.issues.filter((item) => item.status === status).map(renderIssueCard).join("")) || `<div class="empty"><p class="muted">No issues</p></div>`}
+              ${(issues.filter((item) => item.status === status).map(renderIssueCard).join("")) || `<div class="empty"><p class="muted">No issues</p></div>`}
             </div>
           `).join("")}
         </div>
