@@ -973,6 +973,7 @@
   }
 
   function renderAgents() {
+    const agents = sortedAgents(state.agents);
     return `
       <section class="stack">
         <div class="page-header">
@@ -996,7 +997,7 @@
           </div>
         ` : ""}
         <div class="grid-3">
-          ${state.agents.length ? state.agents.map(renderAgentCard).join("") : `<div class="empty"><p class="muted">No agents yet.</p></div>`}
+          ${agents.length ? agents.map(renderAgentCard).join("") : `<div class="empty"><p class="muted">No agents yet.</p></div>`}
         </div>
       </section>
     `;
@@ -1341,22 +1342,35 @@
   }
 
   function renderAgentPicker(targetName, selectedId, allowEmpty) {
+    const agents = sortedAgents(state.agents);
     const selected = selectedId || "";
+    const selectedAgent = agents.find((agent) => agent.id === selected);
     return `
-      <div class="agent-picker">
-        ${allowEmpty ? `
-          <button type="button" class="agent-option ${selected === "" ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="">
+      <details class="agent-select">
+        <summary class="agent-select-trigger">
+          ${selectedAgent ? `
+            ${renderAgentAvatar(selectedAgent, { size: "sm", online: isAgentOnline(selectedAgent) })}
+            <span>${escapeHtml(selectedAgent.name)}</span>
+          ` : `
             <span class="agent-avatar sm"><span>NA</span></span>
-            <span>Unassigned</span>
-          </button>
-        ` : ""}
-        ${state.agents.map((agent) => `
-          <button type="button" class="agent-option ${selected === agent.id ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="${escapeAttr(agent.id)}">
-            ${renderAgentAvatar(agent, { size: "sm", online: isAgentOnline(agent) })}
-            <span>${escapeHtml(agent.name)}</span>
-          </button>
-        `).join("")}
-      </div>
+            <span>${allowEmpty ? "Unassigned" : "Select agent"}</span>
+          `}
+        </summary>
+        <div class="agent-select-menu">
+          ${allowEmpty ? `
+            <button type="button" class="agent-option ${selected === "" ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="">
+              <span class="agent-avatar sm"><span>NA</span></span>
+              <span>Unassigned</span>
+            </button>
+          ` : ""}
+          ${agents.map((agent) => `
+            <button type="button" class="agent-option ${selected === agent.id ? "selected" : ""}" data-action="select-agent-option" data-target="${escapeAttr(targetName)}" data-id="${escapeAttr(agent.id)}">
+              ${renderAgentAvatar(agent, { size: "sm", online: isAgentOnline(agent) })}
+              <span>${escapeHtml(agent.name)}</span>
+            </button>
+          `).join("")}
+        </div>
+      </details>
     `;
   }
 
@@ -1370,13 +1384,31 @@
         field.querySelectorAll(".agent-option").forEach((node) => {
           node.classList.toggle("selected", (node.dataset.id || "") === id);
         });
+        const details = field.querySelector(".agent-select");
+        if (details) details.open = false;
       }
     }
+    render();
   }
 
   function isAgentOnline(agent) {
     const runtime = state.runtimes.find((item) => item.id === agent.runtime_id);
     return !!runtime && ["online", "idle", "busy"].includes(String(runtime.status || "").toLowerCase());
+  }
+
+  function sortedAgents(list) {
+    const rank = { online: 0, idle: 0, busy: 1, offline: 2 };
+    return [...(list || [])].sort((a, b) => {
+      const aRank = rank[getAgentRuntimeStatus(a)] ?? 3;
+      const bRank = rank[getAgentRuntimeStatus(b)] ?? 3;
+      if (aRank !== bRank) return aRank - bRank;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
+  function getAgentRuntimeStatus(agent) {
+    const runtime = state.runtimes.find((item) => item.id === agent.runtime_id);
+    return String(runtime && runtime.status ? runtime.status : "offline").toLowerCase();
   }
 
   function readFileAsDataUrl(file) {
