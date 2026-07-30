@@ -94,6 +94,7 @@
   document.addEventListener("click", onClick);
   document.addEventListener("submit", onSubmit);
   document.addEventListener("input", onInput);
+  document.addEventListener("keydown", onKeyDown);
   window.addEventListener("popstate", () => {
     state.route = parseRoute(location.pathname);
     render();
@@ -305,6 +306,18 @@
     }
     if (target.matches("[data-model='chat-draft']")) {
       state.chatDraft = target.value;
+    }
+  }
+
+  function onKeyDown(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement)) return;
+    if (!target.matches("[data-model='chat-draft']")) return;
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    const form = target.closest("form[data-form='chat-send']");
+    if (form instanceof HTMLFormElement) {
+      form.requestSubmit();
     }
   }
 
