@@ -11,18 +11,28 @@ import (
 )
 
 type Runtime struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Hostname      string    `json:"hostname"`
-	Status        string    `json:"status"`
-	AvailableCLIs []string  `json:"available_clis"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	Hostname      string     `json:"hostname"`
+	Status        string     `json:"status"`
+	AvailableCLIs []string   `json:"available_clis"`
 	LastPingAt    *time.Time `json:"last_ping_at"`
-	CreatedAt     time.Time `json:"created_at"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
+
+const runtimeOfflineAfter = 90 * time.Second
 
 // GET /api/w/{workspace}/runtimes
 func HandleList(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.GetWorkspaceID(r.Context())
+
+	_, _ = db.Pool.Exec(r.Context(), `
+		UPDATE runtimes
+		   SET status='offline'
+		 WHERE workspace_id=$1
+		   AND last_ping_at IS NOT NULL
+		   AND last_ping_at < NOW() - INTERVAL '90 seconds'
+	`, wsID)
 
 	rows, err := db.Pool.Query(r.Context(),
 		`SELECT id, name, hostname, status, available_clis, last_ping_at, created_at
@@ -42,6 +52,9 @@ func HandleList(w http.ResponseWriter, r *http.Request) {
 			&rt.AvailableCLIs, &rt.LastPingAt, &rt.CreatedAt,
 		); err != nil {
 			continue
+		}
+		if rt.LastPingAt == nil || time.Since(*rt.LastPingAt) > runtimeOfflineAfter {
+			rt.Status = "offline"
 		}
 		list = append(list, rt)
 	}

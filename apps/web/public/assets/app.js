@@ -56,6 +56,7 @@
     ws: null,
     wsWorkspace: "",
     collapsedTasks: {},
+    workspaceRefreshTimer: null,
   };
 
   const providerMeta = {
@@ -152,6 +153,7 @@
     }
 
     if (state.route.name === "dashboard") {
+      stopWorkspaceRefresh();
       await loadWorkspaces();
       return;
     }
@@ -159,9 +161,11 @@
     if (state.route.name === "workspace") {
       await Promise.all([loadWorkspaces(), loadWorkspaceSection()]);
       connectWorkspaceSocket();
+      startWorkspaceRefresh();
       return;
     }
 
+    stopWorkspaceRefresh();
     disconnectSocket();
   }
 
@@ -791,6 +795,21 @@
       state.ws.close();
       state.ws = null;
       state.wsWorkspace = "";
+    }
+  }
+
+  function startWorkspaceRefresh() {
+    stopWorkspaceRefresh();
+    state.workspaceRefreshTimer = window.setInterval(() => {
+      if (state.route.name !== "workspace") return;
+      loadWorkspaceSection().catch(() => {});
+    }, 15000);
+  }
+
+  function stopWorkspaceRefresh() {
+    if (state.workspaceRefreshTimer) {
+      window.clearInterval(state.workspaceRefreshTimer);
+      state.workspaceRefreshTimer = null;
     }
   }
 
