@@ -82,6 +82,10 @@ func HandleConnect(w http.ResponseWriter, r *http.Request) {
 			"UPDATE runtimes SET status='online', last_ping_at=NOW() WHERE id=$1",
 			runtimeID,
 		)
+		DefaultHub.BroadcastToWorkspace(workspaceID, Message{
+			Type:    TypeAgentStatus,
+			Payload: map[string]string{"runtime_id": runtimeID, "status": "online"},
+		})
 	}
 
 	go client.writePump()

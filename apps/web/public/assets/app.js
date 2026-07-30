@@ -770,6 +770,10 @@
           await loadSelectedChatThread({ preserve: true });
           return;
         }
+        if (message.type === "agent:status") {
+          await loadWorkspaceSection();
+          return;
+        }
         if (message.type === "issue:updated" || message.type === "task:status") {
           await loadWorkspaceSection();
         }
@@ -834,6 +838,12 @@
       `API_BASE=${base}`,
       `WS_URL=${config.wsUrl}`,
       "AGENT_WORKDIR=/path/to/your/project",
+      "# Optional for Claude CLI using local/remote compatible endpoints",
+      "ANTHROPIC_AUTH_TOKEN=ollama",
+      "ANTHROPIC_BASE_URL=http://127.0.0.1:11434",
+      "CLAUDE_CODE_USE_POWERSHELL_TOOL=1",
+      "CLAUDE_MODEL=",
+      "CLAUDE_PERMISSION_MODE=auto",
       "# Optional for llama.cpp agents",
       "LLAMA_MODEL=C:\\llama.cpp\\models\\your-model.gguf",
       "LLAMA_CTX=4096",

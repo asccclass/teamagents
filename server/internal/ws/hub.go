@@ -1,12 +1,14 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/teamagents/server/internal/db"
 )
 
 type Message struct {
@@ -144,6 +146,20 @@ func (h *Hub) Run() {
 				close(c.send)
 			}
 			h.mu.Unlock()
+			if c.isDaemon && c.runtimeID != "" {
+				if _, err := db.Pool.Exec(
+					context.Background(),
+					"UPDATE runtimes SET status='offline' WHERE id=$1",
+					c.runtimeID,
+				); err != nil {
+					log.Printf("Failed to mark runtime offline: runtime=%s err=%v", c.runtimeID, err)
+				} else {
+					h.BroadcastToWorkspace(c.workspaceID, Message{
+						Type:    TypeAgentStatus,
+						Payload: map[string]string{"runtime_id": c.runtimeID, "status": "offline"},
+					})
+				}
+			}
 			log.Printf("WS disconnected: user=%s", c.userID)
 
 		case bm := <-h.broadcast:

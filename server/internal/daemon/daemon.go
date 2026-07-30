@@ -367,7 +367,14 @@ func (d *Daemon) runCLI(ctx context.Context, provider, prompt, taskID string) (s
 	case "llama":
 		return d.runLlamaHTTP(ctx, prompt, taskID)
 	case "claude":
-		cmd = exec.CommandContext(ctx, "claude", "--print", prompt)
+		args := []string{"--print", prompt}
+		if permissionMode := strings.TrimSpace(os.Getenv("CLAUDE_PERMISSION_MODE")); permissionMode != "" {
+			args = append([]string{"--permission-mode", permissionMode}, args...)
+		}
+		if model := strings.TrimSpace(os.Getenv("CLAUDE_MODEL")); model != "" {
+			args = append([]string{"--model", model}, args...)
+		}
+		cmd = exec.CommandContext(ctx, "claude", args...)
 	case "codex":
 		cmd = exec.CommandContext(ctx, "codex", "--quiet", prompt)
 	case "cursor-agent":
